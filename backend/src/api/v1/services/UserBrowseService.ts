@@ -24,10 +24,6 @@ interface UserChatbotDetail {
   id: number;
   display_name: string;
   domain: string;
-  owner: {
-    id: number;
-    email: string;
-  };
   contact: {
     org_name: string;
     phone: string | null;
@@ -44,8 +40,12 @@ interface UserChatbotDetail {
     close_time: string;
     notes: string | null;
   }>;
-  custom_block_types_count: number;
-  custom_block_instances_count: number;
+  custom_blocks: Array<{
+    type_id: number;
+    type_name: string;
+    description: string | null;
+    instances: Array<Record<string, unknown>>;
+  }>;
 }
 
 export class UserBrowseService {
@@ -59,9 +59,7 @@ export class UserBrowseService {
 
     for (const chatbot of rows) {
       const owner = chatbot.get('owner') as UserModel | undefined;
-      if (!owner) {
-        continue;
-      }
+      if (!owner) continue;
 
       const existing = grouped.get(owner.user_id) ?? {
         owner_id: owner.user_id,
@@ -83,17 +81,9 @@ export class UserBrowseService {
   }
 
   async getChatbotDetail(chatbotId: number): Promise<UserChatbotDetail> {
-    const chatbot = await ChatbotModel.findByPk(chatbotId, {
-      include: [{ model: UserModel, as: 'owner', attributes: ['user_id', 'email'] }]
-    });
-
+    const chatbot = await ChatbotModel.findByPk(chatbotId);
     if (!chatbot) {
       throw new AppError('Chatbot not found', 404, 'CHATBOT_NOT_FOUND');
-    }
-
-    const owner = chatbot.get('owner') as UserModel | undefined;
-    if (!owner) {
-      throw new AppError('Owner not found', 404, 'OWNER_NOT_FOUND');
     }
 
     const contactItem = await ChatbotItemModel.findOne({
@@ -113,26 +103,36 @@ export class UserBrowseService {
       ? await BbScheduleModel.findAll({ where: { entity_id: scheduleItems.map((i) => i.entity_id) }, order: [['entity_id', 'ASC']] })
       : [];
 
-    const customBlockTypesCount = await BlockTypeModel.count({ where: { chatbot_id: chatbotId, is_system: false } });
+    const blockTypes = await BlockTypeModel.findAll({
+      where: { chatbot_id: chatbotId, is_system: false },
+      order: [['type_name', 'ASC']]
+    });
 
     const dynamicItems = await ChatbotItemModel.findAll({
       where: { chatbot_id: chatbotId },
       include: [{ model: BbEntityModel, as: 'entity', required: true }]
     });
 
-    const customBlockInstancesCount = dynamicItems.filter((item) => {
+    const entitiesByType = new Map<number, Record<string, unknown>[]>();
+    for (const item of dynamicItems) {
       const entity = item.get('entity') as BbEntityModel | undefined;
-      return Boolean(entity?.type_id);
-    }).length;
+      if (!entity?.type_id) continue;
+      const current = entitiesByType.get(Number(entity.type_id)) ?? [];
+      current.push((entity.data as Record<string, unknown>) ?? {});
+      entitiesByType.set(Number(entity.type_id), current);
+    }
+
+    const customBlocks = blockTypes.map((type) => ({
+      type_id: Number(type.type_id),
+      type_name: type.type_name,
+      description: type.description,
+      instances: entitiesByType.get(Number(type.type_id)) ?? []
+    }));
 
     return {
       id: chatbot.chatbot_id,
       display_name: chatbot.display_name,
       domain: chatbot.domain,
-      owner: {
-        id: owner.user_id,
-        email: owner.email
-      },
       contact: contact
         ? {
             org_name: contact.org_name,
@@ -151,8 +151,7 @@ export class UserBrowseService {
         close_time: String(schedule.close_time),
         notes: schedule.notes
       })),
-      custom_block_types_count: customBlockTypesCount,
-      custom_block_instances_count: customBlockInstancesCount
+      custom_blocks: customBlocks
     };
   }
 }

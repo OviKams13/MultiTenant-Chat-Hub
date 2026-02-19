@@ -17,10 +17,6 @@ export interface UserChatbotDetail {
   id: number;
   display_name: string;
   domain: string;
-  owner: {
-    id: number;
-    email: string;
-  };
   contact: {
     org_name: string;
     phone: string | null;
@@ -37,8 +33,12 @@ export interface UserChatbotDetail {
     close_time: string;
     notes: string | null;
   }>;
-  custom_block_types_count: number;
-  custom_block_instances_count: number;
+  custom_blocks: Array<{
+    type_id: number;
+    type_name: string;
+    description: string | null;
+    instances: Array<Record<string, unknown>>;
+  }>;
 }
 
 export const userApi = {

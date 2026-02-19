@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Phone, Mail, MapPin, User, Blocks } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MapPin } from "lucide-react";
 import ChatWidget from "@/components/ChatWidget";
 import { useAuth } from "@/contexts/AuthContext";
 import { UserChatbotDetail, userApi } from "@/lib/user-api";
@@ -42,18 +42,15 @@ const ShopDetail = () => {
         <p className="text-sm text-muted-foreground">Domain: {chatbot.domain}</p>
       </div>
 
-      <Card className="mb-4">
-        <CardContent className="py-4 text-sm flex flex-wrap gap-4">
-          <p className="flex items-center gap-2"><User className="h-4 w-4" /> Admin: {chatbot.owner.email}</p>
-          <p className="flex items-center gap-2"><Blocks className="h-4 w-4" /> Custom block types: {chatbot.custom_block_types_count}</p>
-          <p className="flex items-center gap-2"><Blocks className="h-4 w-4" /> Custom block data: {chatbot.custom_block_instances_count}</p>
-        </CardContent>
-      </Card>
-
       <Tabs defaultValue="contact" className="space-y-4">
-        <TabsList>
+        <TabsList className="flex flex-wrap h-auto">
           <TabsTrigger value="contact">Contact</TabsTrigger>
           <TabsTrigger value="schedule">Schedule</TabsTrigger>
+          {chatbot.custom_blocks.map((block) => (
+            <TabsTrigger key={block.type_id} value={`custom-${block.type_id}`}>
+              {block.type_name}
+            </TabsTrigger>
+          ))}
         </TabsList>
 
         <TabsContent value="contact">
@@ -104,6 +101,34 @@ const ShopDetail = () => {
             </Card>
           )}
         </TabsContent>
+
+        {chatbot.custom_blocks.map((block) => (
+          <TabsContent key={block.type_id} value={`custom-${block.type_id}`}>
+            {block.instances.length === 0 ? (
+              <Card><CardContent className="py-8 text-center text-muted-foreground">No data available for this custom block</CardContent></Card>
+            ) : (
+              <div className="space-y-3">
+                {block.instances.map((instance, index) => (
+                  <Card key={index} className="shadow-card">
+                    <CardHeader>
+                      <CardTitle className="text-base">{block.type_name} #{index + 1}</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid md:grid-cols-2 gap-3">
+                        {Object.entries(instance).map(([key, value]) => (
+                          <div key={key} className="rounded-md border p-3">
+                            <p className="text-xs uppercase text-muted-foreground mb-1">{key}</p>
+                            <p className="text-sm break-words">{typeof value === "string" ? value : JSON.stringify(value)}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        ))}
       </Tabs>
 
       <ChatWidget shopName={chatbot.display_name} />
