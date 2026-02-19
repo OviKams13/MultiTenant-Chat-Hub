@@ -11,7 +11,6 @@ import { useToast } from "@/hooks/use-toast";
 const Signup = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const { signUp } = useAuth();
   const { toast } = useToast();
@@ -19,10 +18,6 @@ const Signup = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password !== confirmPassword) {
-      toast({ title: "Passwords don't match", variant: "destructive" });
-      return;
-    }
 
     setSubmitting(true);
     try {
@@ -56,10 +51,6 @@ const Signup = () => {
               <Label htmlFor="password">Password</Label>
               <Input id="password" type="password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" />
               <p className="text-xs text-muted-foreground">Use at least 8 chars, with uppercase, lowercase and a number.</p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="confirm">Confirm password</Label>
-              <Input id="confirm" type="password" required value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="••••••••" />
             </div>
             <Button type="submit" className="w-full gradient-brand text-primary-foreground" disabled={submitting}>
               {submitting ? "Creating account…" : "Sign up"}

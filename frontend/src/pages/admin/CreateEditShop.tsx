@@ -42,10 +42,10 @@ const CreateEditShop = () => {
     try {
       if (isEdit && chatbotId) {
         await adminApi.updateChatbot(chatbotId, { display_name: displayName, domain }, token);
-        toast({ title: "Shop updated!" });
+        toast({ title: "Chatbot updated!" });
       } else {
         await adminApi.createChatbot({ display_name: displayName, domain }, token);
-        toast({ title: "Shop created!" });
+        toast({ title: "Chatbot created!" });
       }
       navigate("/admin/dashboard");
     } catch (err: any) {
@@ -59,12 +59,12 @@ const CreateEditShop = () => {
     <AdminLayout>
       <Card className="max-w-xl mx-auto shadow-elevated">
         <CardHeader>
-          <CardTitle>{isEdit ? "Edit Shop" : "Create New Shop"}</CardTitle>
+          <CardTitle>{isEdit ? "Edit Chatbot" : "Create New Chatbot"}</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label>Store name</Label>
+              <Label>Chatbot name</Label>
               <Input required value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Linda's Cakes" />
             </div>
             <div className="space-y-2">
