@@ -9,7 +9,8 @@
     "start": "node dist/index.js",
     "lint": "eslint \"src/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\"",
-    "seed": "ts-node-dev --transpile-only src/scripts/seedDatabase.ts"
+    "seed": "ts-node-dev --transpile-only src/scripts/seedDatabase.ts",
+    "test": "node -r ts-node/register --test tests/auth/auth.api.test.js"
   },
   "keywords": [],
   "author": "",

@@ -1,14 +1,16 @@
-// User interface describes a platform user record persisted in users table.
-// During Feature 0 we only create the initial admin account used to access back-office tools later.
-// The password field stores a hash, never a plain value, to avoid credential leakage.
-// Additional profile/authentication fields can be added in future features without changing seed flow intent.
-export interface User {
-  user_id: number;
-  role_id: number;
+// ApiUserProfile defines the user shape returned by Auth endpoints to frontend clients.
+// It intentionally excludes password hashes because credentials must never leave backend services.
+// Role is represented by role name to simplify authorization checks in the admin interface.
+// This DTO is used by AuthService responses and remains stable even if DB schema evolves later.
+export interface ApiUserProfile {
+  id: number;
   email: string;
-  password_hash: string;
-  created_at: Date;
+  role: string;
+  createdAt: Date;
 }
 
-// This type is used for the minimum payload required to create the seeded admin account.
-export type UserCreation = Omit<User, 'user_id' | 'created_at'>;
+// AuthResultPayload captures the success payload for register/login operations.
+export interface AuthResultPayload {
+  user: ApiUserProfile;
+  token: string;
+}
