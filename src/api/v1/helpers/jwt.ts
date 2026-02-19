@@ -1,4 +1,5 @@
 import { createHmac } from 'crypto';
+import dotenv from 'dotenv';
 import { AppError } from '../errors/AppError';
 
 export interface AuthTokenPayload {
@@ -13,6 +14,9 @@ export interface AuthTokenPayload {
 // Feature 1 keeps payload minimal (id, email, role) so private data never sits in bearer tokens.
 // Startup crashes when JWT_SECRET is missing to avoid issuing unverifiable tokens in production.
 // Verification validates signature and expiration before request is marked authenticated.
+// dotenv is loaded here so JWT configuration is available even when this module is imported early.
+dotenv.config();
+
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN_SECONDS = Number(process.env.JWT_EXPIRES_IN_SECONDS || 3600);
 
