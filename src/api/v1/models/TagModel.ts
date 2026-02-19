@@ -11,7 +11,6 @@ export class TagModel extends Model<InferAttributes<TagModel>, InferCreationAttr
   declare category: string | null;
   declare is_system: boolean;
   declare synonyms_json: string[] | null;
-  declare created_at: CreationOptional<Date>;
 }
 
 // Model initialization mirrors current MySQL DDL while staying compatible with strict TypeScript mode.
@@ -47,11 +46,6 @@ TagModel.init(
     synonyms_json: {
       type: DataTypes.JSON,
       allowNull: true
-    },
-    created_at: {
-      type: DataTypes.DATE,
-      allowNull: false,
-      defaultValue: DataTypes.NOW
     }
   },
   {
