@@ -1,7 +1,7 @@
-// Swagger document fragment for Auth, Chatbots, Tags, and Static Blocks modules in API v1.
+// Swagger document fragment for Auth, Chatbots, Tags, Static Blocks, and Dynamic Block Types modules in API v1.
 // This object can be consumed by swagger-ui-express in a future docs endpoint.
 // Schemas enforce the standardized { success, data, error } API envelope.
-// bearerAuth security scheme is reused for all protected chatbot, tags, and static block endpoints.
+// bearerAuth security scheme is reused for all protected chatbot, tags, static block, and block-type endpoints.
 export const authSwaggerSpec = {
   openapi: '3.0.0',
   components: {
@@ -90,6 +90,55 @@ export const authSwaggerSpec = {
           close_time: { type: 'string', example: '17:00' },
           notes: { type: 'string' }
         }
+      },
+      BlockTypeCreateRequest: {
+        type: 'object',
+        required: ['type_name', 'schema_definition'],
+        properties: {
+          type_name: { type: 'string', maxLength: 100 },
+          description: { type: 'string', maxLength: 255 },
+          schema_definition: {
+            type: 'object',
+            properties: {
+              label: { type: 'string' },
+              fields: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  required: ['name', 'label', 'type'],
+                  properties: {
+                    name: { type: 'string', maxLength: 100 },
+                    label: { type: 'string', maxLength: 120 },
+                    type: { type: 'string', enum: ['string', 'number', 'boolean', 'date', 'select'] },
+                    required: { type: 'boolean' },
+                    options: { type: 'array', items: { type: 'string' } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      BlockTypeUpdateRequest: {
+        type: 'object',
+        properties: {
+          type_name: { type: 'string', maxLength: 100 },
+          description: { type: 'string', maxLength: 255 },
+          schema_definition: { type: 'object' }
+        }
+      },
+      BlockTypeResponse: {
+        type: 'object',
+        properties: {
+          type_id: { type: 'integer' },
+          chatbot_id: { type: 'integer', nullable: true },
+          type_name: { type: 'string' },
+          description: { type: 'string', nullable: true },
+          schema_definition: { type: 'object' },
+          is_system: { type: 'boolean' },
+          scope: { type: 'string', enum: ['GLOBAL', 'CHATBOT'] },
+          created_at: { type: 'string', format: 'date-time' }
+        }
       }
     }
   },
@@ -97,7 +146,8 @@ export const authSwaggerSpec = {
     { name: 'Auth', description: 'Authentication endpoints' },
     { name: 'Chatbots', description: 'Chatbot management for admins' },
     { name: 'Tags', description: 'System and custom tags used for chatbot data blocks' },
-    { name: 'StaticBlocks', description: 'Contact and schedule static blocks for each chatbot' }
+    { name: 'StaticBlocks', description: 'Contact and schedule static blocks for each chatbot' },
+    { name: 'Dynamic Block Types', description: 'Manage dynamic block type definitions per chatbot' }
   ],
   paths: {
     '/api/v1/auth/register': {
@@ -301,6 +351,92 @@ export const authSwaggerSpec = {
           '401': { description: 'Unauthorized' },
           '403': { description: 'Forbidden' },
           '404': { description: 'Schedule not found' },
+          '500': { description: 'Server error' }
+        }
+      }
+    },
+
+    '/api/v1/chatbots/{chatbotId}/block-types': {
+      post: {
+        tags: ['Dynamic Block Types'],
+        summary: 'Create a dynamic block type for one chatbot',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'chatbotId', in: 'path', required: true, schema: { type: 'integer' } }],
+        requestBody: { required: true },
+        responses: {
+          '201': { description: 'Block type created' },
+          '400': { description: 'Validation error' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Chatbot not found' },
+          '409': { description: 'Block type name already exists' },
+          '500': { description: 'Server error' }
+        }
+      },
+      get: {
+        tags: ['Dynamic Block Types'],
+        summary: 'List global + chatbot block types for a chatbot',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'chatbotId', in: 'path', required: true, schema: { type: 'integer' } }],
+        responses: {
+          '200': { description: 'Block types list returned' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Chatbot not found' },
+          '500': { description: 'Server error' }
+        }
+      }
+    },
+    '/api/v1/chatbots/{chatbotId}/block-types/{typeId}': {
+      get: {
+        tags: ['Dynamic Block Types'],
+        summary: 'Get one block type by id for a chatbot context',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'chatbotId', in: 'path', required: true, schema: { type: 'integer' } },
+          { name: 'typeId', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          '200': { description: 'Block type detail returned' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Block type not found' },
+          '500': { description: 'Server error' }
+        }
+      },
+      put: {
+        tags: ['Dynamic Block Types'],
+        summary: 'Update one chatbot-owned dynamic block type',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'chatbotId', in: 'path', required: true, schema: { type: 'integer' } },
+          { name: 'typeId', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        requestBody: { required: true },
+        responses: {
+          '200': { description: 'Block type updated' },
+          '400': { description: 'Validation error' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Block type not found' },
+          '409': { description: 'Block type conflict' },
+          '500': { description: 'Server error' }
+        }
+      },
+      delete: {
+        tags: ['Dynamic Block Types'],
+        summary: 'Delete one chatbot-owned dynamic block type',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'chatbotId', in: 'path', required: true, schema: { type: 'integer' } },
+          { name: 'typeId', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          '204': { description: 'Block type deleted' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Block type not found' },
+          '409': { description: 'Block type in use' },
           '500': { description: 'Server error' }
         }
       }
