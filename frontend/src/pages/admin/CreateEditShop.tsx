@@ -2,54 +2,49 @@ import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import AdminLayout from "@/layouts/AdminLayout";
-import { supabase } from "@/integrations/supabase/client";
+import { adminApi } from "@/lib/admin-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 
 const CreateEditShop = () => {
   const { id } = useParams();
-  const isEdit = Boolean(id);
-  const { user } = useAuth();
+  const chatbotId = id ? Number(id) : null;
+  const isEdit = Boolean(chatbotId);
+  const { token } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
   const [displayName, setDisplayName] = useState("");
   const [domain, setDomain] = useState("");
-  const [description, setDescription] = useState("");
-  const [category, setCategory] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (isEdit && id) {
-      supabase.from("chatbots").select("*").eq("id", id).single().then(({ data }) => {
-        if (data) {
-          setDisplayName(data.display_name);
-          setDomain(data.domain);
-          setDescription(data.description || "");
-          setCategory(data.category || "");
-        }
+    if (!isEdit || !chatbotId || !token) return;
+
+    adminApi.getChatbot(chatbotId, token)
+      .then((chatbot) => {
+        setDisplayName(chatbot.display_name);
+        setDomain(chatbot.domain);
+      })
+      .catch((error: Error) => {
+        toast({ title: "Unable to load chatbot", description: error.message, variant: "destructive" });
       });
-    }
-  }, [id, isEdit]);
+  }, [chatbotId, isEdit, token, toast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!token) return;
     setSaving(true);
-    const slug = domain.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-");
 
     try {
-      if (isEdit && id) {
-        const { error } = await supabase.from("chatbots").update({ display_name: displayName, domain: slug, description, category }).eq("id", id);
-        if (error) throw error;
+      if (isEdit && chatbotId) {
+        await adminApi.updateChatbot(chatbotId, { display_name: displayName, domain }, token);
         toast({ title: "Shop updated!" });
       } else {
-        const { error } = await supabase.from("chatbots").insert({ user_id: user.id, display_name: displayName, domain: slug, description, category });
-        if (error) throw error;
+        await adminApi.createChatbot({ display_name: displayName, domain }, token);
         toast({ title: "Shop created!" });
       }
       navigate("/admin/dashboard");
@@ -73,17 +68,9 @@ const CreateEditShop = () => {
               <Input required value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Linda's Cakes" />
             </div>
             <div className="space-y-2">
-              <Label>Domain / slug</Label>
-              <Input required value={domain} onChange={e => setDomain(e.target.value)} placeholder="lindas-cakes" />
-              <p className="text-xs text-muted-foreground">This will be used in the public URL</p>
-            </div>
-            <div className="space-y-2">
-              <Label>Short description</Label>
-              <Textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Home-made cakes and pastries" />
-            </div>
-            <div className="space-y-2">
-              <Label>Category</Label>
-              <Input value={category} onChange={e => setCategory(e.target.value)} placeholder="Food, Clothes, Electronics…" />
+              <Label>Domain</Label>
+              <Input required value={domain} onChange={e => setDomain(e.target.value)} placeholder="shop.example.com" />
+              <p className="text-xs text-muted-foreground">Use a valid domain format (example: myshop.com)</p>
             </div>
             <div className="flex gap-3">
               <Button type="submit" className="gradient-brand text-primary-foreground" disabled={saving}>

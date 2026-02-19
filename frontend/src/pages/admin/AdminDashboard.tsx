@@ -2,36 +2,28 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import AdminLayout from "@/layouts/AdminLayout";
-import { supabase } from "@/integrations/supabase/client";
+import { adminApi, Chatbot } from "@/lib/admin-api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Plus, Pencil, Wrench, ExternalLink } from "lucide-react";
-
-interface Chatbot {
-  id: string;
-  display_name: string;
-  domain: string;
-  description: string;
-  created_at: string;
-}
+import { Plus, Pencil, Wrench } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 const AdminDashboard = () => {
-  const { user } = useAuth();
+  const { token } = useAuth();
+  const { toast } = useToast();
   const [shops, setShops] = useState<Chatbot[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) return;
-    supabase
-      .from("chatbots")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .then(({ data }) => {
-        setShops((data as Chatbot[]) || []);
-        setLoading(false);
-      });
-  }, [user]);
+    if (!token) return;
+
+    adminApi.listChatbots(token)
+      .then(setShops)
+      .catch((error: Error) => {
+        toast({ title: "Failed to load shops", description: error.message, variant: "destructive" });
+      })
+      .finally(() => setLoading(false));
+  }, [token, toast]);
 
   return (
     <AdminLayout>
@@ -73,7 +65,6 @@ const AdminDashboard = () => {
               <CardHeader>
                 <CardTitle className="text-lg">{shop.display_name}</CardTitle>
                 <CardDescription className="font-mono text-xs">{shop.domain}</CardDescription>
-                {shop.description && <p className="text-sm text-muted-foreground mt-1">{shop.description}</p>}
               </CardHeader>
               <CardContent className="flex gap-2 flex-wrap">
                 <Button size="sm" variant="outline" asChild className="gap-1">
@@ -81,9 +72,6 @@ const AdminDashboard = () => {
                 </Button>
                 <Button size="sm" variant="outline" asChild className="gap-1">
                   <Link to={`/admin/chatbots/${shop.id}/builder`}><Wrench className="h-3 w-3" /> Builder</Link>
-                </Button>
-                <Button size="sm" variant="ghost" asChild className="gap-1">
-                  <Link to={`/mall/shops/${shop.domain}`}><ExternalLink className="h-3 w-3" /> Preview</Link>
                 </Button>
               </CardContent>
             </Card>
