@@ -1,7 +1,7 @@
-// Swagger document fragment for Auth, Chatbots, and Tags modules in API v1.
+// Swagger document fragment for Auth, Chatbots, Tags, and Static Blocks modules in API v1.
 // This object can be consumed by swagger-ui-express in a future docs endpoint.
 // Schemas enforce the standardized { success, data, error } API envelope.
-// bearerAuth security scheme is reused for all protected chatbot and tags endpoints.
+// bearerAuth security scheme is reused for all protected chatbot, tags, and static block endpoints.
 export const authSwaggerSpec = {
   openapi: '3.0.0',
   components: {
@@ -56,13 +56,48 @@ export const authSwaggerSpec = {
             items: { type: 'string', maxLength: 100 }
           }
         }
+      },
+      ContactBlockRequest: {
+        type: 'object',
+        required: ['org_name'],
+        properties: {
+          org_name: { type: 'string', maxLength: 120 },
+          phone: { type: 'string', maxLength: 50 },
+          email: { type: 'string', format: 'email', maxLength: 190 },
+          address_text: { type: 'string', maxLength: 255 },
+          city: { type: 'string', maxLength: 120 },
+          country: { type: 'string', maxLength: 120 },
+          hours_text: { type: 'string', maxLength: 255 }
+        }
+      },
+      ScheduleBlockRequest: {
+        type: 'object',
+        required: ['title', 'day_of_week', 'open_time', 'close_time'],
+        properties: {
+          title: { type: 'string', maxLength: 120 },
+          day_of_week: { type: 'string', enum: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] },
+          open_time: { type: 'string', example: '09:00' },
+          close_time: { type: 'string', example: '17:00' },
+          notes: { type: 'string' }
+        }
+      },
+      ScheduleBlockUpdateRequest: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', maxLength: 120 },
+          day_of_week: { type: 'string', enum: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] },
+          open_time: { type: 'string', example: '09:00' },
+          close_time: { type: 'string', example: '17:00' },
+          notes: { type: 'string' }
+        }
       }
     }
   },
   tags: [
     { name: 'Auth', description: 'Authentication endpoints' },
     { name: 'Chatbots', description: 'Chatbot management for admins' },
-    { name: 'Tags', description: 'System and custom tags used for chatbot data blocks' }
+    { name: 'Tags', description: 'System and custom tags used for chatbot data blocks' },
+    { name: 'StaticBlocks', description: 'Contact and schedule static blocks for each chatbot' }
   ],
   paths: {
     '/api/v1/auth/register': {
@@ -154,6 +189,119 @@ export const authSwaggerSpec = {
           '401': { description: 'Unauthorized' },
           '403': { description: 'Forbidden' },
           '404': { description: 'Chatbot not found' }
+        }
+      }
+    },
+
+    '/api/v1/chatbots/{chatbotId}/blocks/contact': {
+      post: {
+        tags: ['StaticBlocks'],
+        summary: 'Create the unique contact block for a chatbot',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'chatbotId', in: 'path', required: true, schema: { type: 'integer' } }],
+        requestBody: { required: true },
+        responses: {
+          '201': { description: 'Contact block created' },
+          '400': { description: 'Validation error' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Chatbot not found' },
+          '409': { description: 'Contact already exists' },
+          '500': { description: 'Server error' }
+        }
+      },
+      get: {
+        tags: ['StaticBlocks'],
+        summary: 'Get the contact block for a chatbot',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'chatbotId', in: 'path', required: true, schema: { type: 'integer' } }],
+        responses: {
+          '200': { description: 'Contact block returned' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Chatbot/contact not found' },
+          '500': { description: 'Server error' }
+        }
+      },
+      put: {
+        tags: ['StaticBlocks'],
+        summary: 'Update the contact block for a chatbot',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'chatbotId', in: 'path', required: true, schema: { type: 'integer' } }],
+        requestBody: { required: true },
+        responses: {
+          '200': { description: 'Contact block updated' },
+          '400': { description: 'Validation error' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Chatbot/contact not found' },
+          '500': { description: 'Server error' }
+        }
+      }
+    },
+    '/api/v1/chatbots/{chatbotId}/blocks/schedules': {
+      post: {
+        tags: ['StaticBlocks'],
+        summary: 'Create one schedule block for a chatbot',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'chatbotId', in: 'path', required: true, schema: { type: 'integer' } }],
+        requestBody: { required: true },
+        responses: {
+          '201': { description: 'Schedule block created' },
+          '400': { description: 'Validation error' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Chatbot not found' },
+          '500': { description: 'Server error' }
+        }
+      },
+      get: {
+        tags: ['StaticBlocks'],
+        summary: 'List all schedule blocks for a chatbot',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'chatbotId', in: 'path', required: true, schema: { type: 'integer' } }],
+        responses: {
+          '200': { description: 'Schedule blocks returned' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Chatbot not found' },
+          '500': { description: 'Server error' }
+        }
+      }
+    },
+    '/api/v1/chatbots/{chatbotId}/blocks/schedules/{entityId}': {
+      put: {
+        tags: ['StaticBlocks'],
+        summary: 'Update one schedule block by entity id',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'chatbotId', in: 'path', required: true, schema: { type: 'integer' } },
+          { name: 'entityId', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        requestBody: { required: true },
+        responses: {
+          '200': { description: 'Schedule block updated' },
+          '400': { description: 'Validation error' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Schedule not found' },
+          '500': { description: 'Server error' }
+        }
+      },
+      delete: {
+        tags: ['StaticBlocks'],
+        summary: 'Delete one schedule block by entity id',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'chatbotId', in: 'path', required: true, schema: { type: 'integer' } },
+          { name: 'entityId', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          '204': { description: 'Schedule block deleted' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Schedule not found' },
+          '500': { description: 'Server error' }
         }
       }
     },

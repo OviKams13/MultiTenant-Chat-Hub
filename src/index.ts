@@ -2,6 +2,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import express from 'express';
 import v1Router from './api/v1';
+import staticBlockRoutes from './api/v1/routes/staticBlockRoutes';
 import { errorHandler } from './api/v1/middlewares/errorHandler';
 import { sequelize } from './config/DatabaseConfig';
 
@@ -22,6 +23,7 @@ export function createApp() {
   });
 
   app.use('/api/v1', v1Router);
+  app.use('/api/v1/chatbots', staticBlockRoutes);
   app.use(errorHandler);
 
   return app;
