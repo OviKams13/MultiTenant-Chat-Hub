@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import AdminLayout from "@/layouts/AdminLayout";
 import { useAuth } from "@/contexts/AuthContext";
@@ -92,7 +92,6 @@ const ChatbotBuilder = () => {
     });
   }, [loadData]);
 
-  const chatbotOwnedTypes = useMemo(() => blockTypes.filter((t) => t.scope === "CHATBOT"), [blockTypes]);
 
   const openFromDrop = (value: BuilderDropType) => {
     if (value === "CONTACT") {
@@ -105,14 +104,8 @@ const ChatbotBuilder = () => {
       return;
     }
 
-    const firstType = chatbotOwnedTypes[0] ?? null;
-    if (!firstType) {
-      setMode({ type: "BLOCK_TYPE" });
-      toast({ title: "Create a block type first", description: "Then you can create dynamic instances." });
-      return;
-    }
-
-    setMode({ type: "INSTANCE", blockType: firstType });
+    setMode({ type: "BLOCK_TYPE" });
+    toast({ title: "Create custom block", description: "Define your block type before adding block data." });
   };
 
   const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -269,7 +262,7 @@ const ChatbotBuilder = () => {
               {[
                 { type: "CONTACT", label: "Contact Block" },
                 { type: "SCHEDULE", label: "Schedule Block" },
-                { type: "DYNAMIC_INSTANCE", label: "Dynamic Instance" },
+                { type: "DYNAMIC_INSTANCE", label: "Custom Block" },
               ].map((item) => (
                 <div
                   key={item.type}
@@ -328,10 +321,9 @@ const ChatbotBuilder = () => {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2"><Type className="h-4 w-4" /> Building block type definitions</CardTitle>
+              <CardTitle className="text-base flex items-center gap-2"><Type className="h-4 w-4" /> Custom blocks</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <Button size="sm" variant="outline" onClick={() => setMode({ type: "BLOCK_TYPE" })}><Plus className="h-3 w-3 mr-1" /> New block type definition</Button>
               {blockTypes.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No block types available.</p>
               ) : (
@@ -350,7 +342,7 @@ const ChatbotBuilder = () => {
                       </div>
                     </div>
                     <div className="mt-2 flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => setMode({ type: "INSTANCE", blockType: type })}>Add instance</Button>
+                      <Button size="sm" variant="outline" onClick={() => setMode({ type: "INSTANCE", blockType: type })}>Add block data</Button>
                     </div>
                     {(instancesByType[type.type_id] ?? []).map((instance) => (
                       <div key={instance.entity_id} className="rounded-md border mt-2 p-2">
