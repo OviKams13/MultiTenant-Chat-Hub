@@ -1,7 +1,35 @@
-// Tag interface models dynamic semantic labels used by chat runtime and admin-managed data blocks.
-// Feature 0 seeds only system tags to ensure every tenant starts with a coherent NLP baseline.
-// synonyms_json is exposed as string[] to keep runtime logic strongly typed in services.
-// Categories help future filtering in admin UI when users manage contact/schedule/dynamic data.
+// Tag DTO represents the API-facing shape consumed by admin builders and block configuration screens.
+// It normalizes synonyms into a string array so frontend code does not parse raw JSON manually.
+// This contract is shared by list/create endpoints and by service methods returning tag data.
+// Keeping DTOs explicit allows DB schema evolution without breaking external API compatibility.
+export interface TagDTO {
+  id: number;
+  tag_code: string;
+  description: string | null;
+  category: string | null;
+  is_system: boolean;
+  synonyms: string[];
+}
+
+// TagFilter captures optional query parameters used by GET /tags for admin-side filtering.
+export interface TagFilter {
+  category?: string;
+  is_system?: boolean;
+  search?: string;
+}
+
+// CreateTagPayload models validated input for creating non-system custom tags.
+export interface CreateTagPayload {
+  tag_code: string;
+  description?: string;
+  category?: string;
+  synonyms?: string[];
+}
+
+// TagResolutionMap maps normalized tag codes to numeric tag identifiers in persistence layer.
+export type TagResolutionMap = Map<string, number>;
+
+// Legacy interfaces are preserved for seed compatibility while feature modules migrate gradually.
 export interface Tag {
   tag_id: number;
   tag_code: string;

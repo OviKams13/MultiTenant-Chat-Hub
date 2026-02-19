@@ -1,7 +1,7 @@
-// Swagger document fragment for Auth and Chatbots modules in API v1.
+// Swagger document fragment for Auth, Chatbots, and Tags modules in API v1.
 // This object can be consumed by swagger-ui-express in a future docs endpoint.
 // Schemas enforce the standardized { success, data, error } API envelope.
-// bearerAuth security scheme is reused for all protected chatbot management endpoints.
+// bearerAuth security scheme is reused for all protected chatbot and tags endpoints.
 export const authSwaggerSpec = {
   openapi: '3.0.0',
   components: {
@@ -43,12 +43,26 @@ export const authSwaggerSpec = {
           domain: { type: 'string', maxLength: 255 },
           display_name: { type: 'string', maxLength: 100 }
         }
+      },
+      TagCreateRequest: {
+        type: 'object',
+        required: ['tag_code'],
+        properties: {
+          tag_code: { type: 'string', maxLength: 50 },
+          description: { type: 'string', maxLength: 255 },
+          category: { type: 'string', maxLength: 50 },
+          synonyms: {
+            type: 'array',
+            items: { type: 'string', maxLength: 100 }
+          }
+        }
       }
     }
   },
   tags: [
     { name: 'Auth', description: 'Authentication endpoints' },
-    { name: 'Chatbots', description: 'Chatbot management for admins' }
+    { name: 'Chatbots', description: 'Chatbot management for admins' },
+    { name: 'Tags', description: 'System and custom tags used for chatbot data blocks' }
   ],
   paths: {
     '/api/v1/auth/register': {
@@ -140,6 +154,38 @@ export const authSwaggerSpec = {
           '401': { description: 'Unauthorized' },
           '403': { description: 'Forbidden' },
           '404': { description: 'Chatbot not found' }
+        }
+      }
+    },
+    '/api/v1/tags': {
+      get: {
+        tags: ['Tags'],
+        summary: 'List system and custom tags for admin builder UI',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'category', in: 'query', required: false, schema: { type: 'string' } },
+          { name: 'is_system', in: 'query', required: false, schema: { type: 'boolean' } },
+          { name: 'search', in: 'query', required: false, schema: { type: 'string' } }
+        ],
+        responses: {
+          '200': { description: 'Tag list returned' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '500': { description: 'Server error' }
+        }
+      },
+      post: {
+        tags: ['Tags'],
+        summary: 'Create a custom non-system tag',
+        security: [{ bearerAuth: [] }],
+        requestBody: { required: true },
+        responses: {
+          '201': { description: 'Tag created' },
+          '400': { description: 'Validation error' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '409': { description: 'Tag code already exists' },
+          '500': { description: 'Server error' }
         }
       }
     }

@@ -1,9 +1,9 @@
 import { CreationOptional, DataTypes, InferAttributes, InferCreationAttributes, Model } from 'sequelize';
 import { sequelize } from '../../../config/DatabaseConfig';
 
-// TagModel contains semantic system tags used by chatbot runtime to map user intents to stored data.
-// Feature 0 inserts a baseline catalog so every tenant starts with shared vocabulary.
-// There is no REST API here; tags are bootstrapped through a CLI script only.
+// TagModel persists both seeded system tags and admin-created custom tags.
+// tag_code remains globally unique to prevent ambiguous tag semantics across chatbot features.
+// synonyms_json is stored in JSON for multilingual runtime matching and builder UX hints.
 export class TagModel extends Model<InferAttributes<TagModel>, InferCreationAttributes<TagModel>> {
   declare tag_id: CreationOptional<number>;
   declare tag_code: string;
@@ -11,9 +11,10 @@ export class TagModel extends Model<InferAttributes<TagModel>, InferCreationAttr
   declare category: string | null;
   declare is_system: boolean;
   declare synonyms_json: string[] | null;
+  declare created_at: CreationOptional<Date>;
 }
 
-// synonyms_json uses JSON type in MySQL to keep multilingual synonyms structured for NLP matching later.
+// Model initialization mirrors current MySQL DDL while staying compatible with strict TypeScript mode.
 TagModel.init(
   {
     tag_id: {
@@ -46,6 +47,11 @@ TagModel.init(
     synonyms_json: {
       type: DataTypes.JSON,
       allowNull: true
+    },
+    created_at: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW
     }
   },
   {
