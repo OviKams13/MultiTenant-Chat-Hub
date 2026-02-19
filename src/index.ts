@@ -5,6 +5,7 @@ import v1Router from './api/v1';
 import staticBlockRoutes from './api/v1/routes/staticBlockRoutes';
 import blockTypeRoutes from './api/v1/routes/blockTypeRoutes';
 import itemTagRoutes from './api/v1/routes/itemTagRoutes';
+import dynamicBlockInstanceRoutes from './api/v1/routes/dynamicBlockInstanceRoutes';
 import { errorHandler } from './api/v1/middlewares/errorHandler';
 import { sequelize } from './config/DatabaseConfig';
 
@@ -28,6 +29,7 @@ export function createApp() {
   app.use('/api/v1/chatbots', staticBlockRoutes);
   app.use('/api/v1/chatbots', blockTypeRoutes);
   app.use('/api/v1/chatbots', itemTagRoutes);
+  app.use('/api/v1/chatbots', dynamicBlockInstanceRoutes);
   app.use(errorHandler);
 
   return app;

@@ -148,7 +148,8 @@ export const authSwaggerSpec = {
     { name: 'Tags', description: 'System and custom tags used for chatbot data blocks' },
     { name: 'StaticBlocks', description: 'Contact and schedule static blocks for each chatbot' },
     { name: 'Dynamic Block Types', description: 'Manage dynamic block type definitions per chatbot' },
-    { name: 'Item Tags', description: 'Read and replace item-level tags for one chatbot item' }
+    { name: 'Item Tags', description: 'Read and replace item-level tags for one chatbot item' },
+    { name: 'Dynamic Block Instances', description: 'CRUD operations for chatbot dynamic block instances' }
   ],
   paths: {
     '/api/v1/auth/register': {
@@ -475,6 +476,98 @@ export const authSwaggerSpec = {
           '401': { description: 'Unauthorized' },
           '403': { description: 'Forbidden' },
           '404': { description: 'Chatbot or item not found' },
+          '500': { description: 'Server error' }
+        }
+      }
+    },
+
+    '/api/v1/chatbots/{chatbotId}/blocks/dynamic/{typeId}': {
+      post: {
+        tags: ['Dynamic Block Instances'],
+        summary: 'Create one dynamic block instance for a chatbot and type',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'chatbotId', in: 'path', required: true, schema: { type: 'integer' } },
+          { name: 'typeId', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        requestBody: { required: true },
+        responses: {
+          '201': { description: 'Dynamic block instance created' },
+          '400': { description: 'Validation error' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Chatbot/type not found' },
+          '500': { description: 'Server error' }
+        }
+      },
+      get: {
+        tags: ['Dynamic Block Instances'],
+        summary: 'List dynamic block instances for one chatbot and type',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'chatbotId', in: 'path', required: true, schema: { type: 'integer' } },
+          { name: 'typeId', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          '200': { description: 'Dynamic block instances returned' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Chatbot/type not found' },
+          '500': { description: 'Server error' }
+        }
+      }
+    },
+    '/api/v1/chatbots/{chatbotId}/blocks/dynamic/{typeId}/{entityId}': {
+      get: {
+        tags: ['Dynamic Block Instances'],
+        summary: 'Get one dynamic block instance by entity id',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'chatbotId', in: 'path', required: true, schema: { type: 'integer' } },
+          { name: 'typeId', in: 'path', required: true, schema: { type: 'integer' } },
+          { name: 'entityId', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          '200': { description: 'Dynamic block instance returned' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Instance not found' },
+          '500': { description: 'Server error' }
+        }
+      },
+      put: {
+        tags: ['Dynamic Block Instances'],
+        summary: 'Update one dynamic block instance by entity id',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'chatbotId', in: 'path', required: true, schema: { type: 'integer' } },
+          { name: 'typeId', in: 'path', required: true, schema: { type: 'integer' } },
+          { name: 'entityId', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        requestBody: { required: true },
+        responses: {
+          '200': { description: 'Dynamic block instance updated' },
+          '400': { description: 'Validation error' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Instance not found' },
+          '500': { description: 'Server error' }
+        }
+      },
+      delete: {
+        tags: ['Dynamic Block Instances'],
+        summary: 'Delete one dynamic block instance by entity id',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'chatbotId', in: 'path', required: true, schema: { type: 'integer' } },
+          { name: 'typeId', in: 'path', required: true, schema: { type: 'integer' } },
+          { name: 'entityId', in: 'path', required: true, schema: { type: 'integer' } }
+        ],
+        responses: {
+          '204': { description: 'Dynamic block instance deleted' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Instance not found' },
           '500': { description: 'Server error' }
         }
       }
