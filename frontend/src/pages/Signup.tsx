@@ -5,12 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Store } from "lucide-react";
+import { Store, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const Signup = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [selectedRole, setSelectedRole] = useState<"admin" | "user">("user");
   const [submitting, setSubmitting] = useState(false);
   const { signUp } = useAuth();
   const { toast } = useToast();
@@ -21,9 +22,9 @@ const Signup = () => {
 
     setSubmitting(true);
     try {
-      await signUp(email, password);
+      const role = await signUp(email, password, selectedRole);
       toast({ title: "Account created!" });
-      navigate("/admin/dashboard");
+      navigate(role === "admin" ? "/admin/dashboard" : "/mall");
     } catch (err: any) {
       toast({ title: "Signup failed", description: err.message, variant: "destructive" });
     } finally {
@@ -38,11 +39,23 @@ const Signup = () => {
           <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-xl gradient-brand">
             <Store className="h-6 w-6 text-primary-foreground" />
           </div>
-          <CardTitle className="text-2xl">Create your owner account</CardTitle>
-          <CardDescription>Sign up to create and manage chatbot shops</CardDescription>
+          <CardTitle className="text-2xl">Create account</CardTitle>
+          <CardDescription>Sign up as admin or user</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Account type</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <Button type="button" variant={selectedRole === "user" ? "default" : "outline"} onClick={() => setSelectedRole("user")}> 
+                  <User className="h-4 w-4 mr-2" /> User
+                </Button>
+                <Button type="button" variant={selectedRole === "admin" ? "default" : "outline"} onClick={() => setSelectedRole("admin")}> 
+                  <Store className="h-4 w-4 mr-2" /> Admin
+                </Button>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input id="email" type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" />

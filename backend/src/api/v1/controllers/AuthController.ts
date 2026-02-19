@@ -13,7 +13,7 @@ export const AuthController = {
   async register(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const payload = validateRegister(req.body as Record<string, unknown>);
-      const result = await authService.registerAdmin(payload);
+      const result = await authService.register(payload);
 
       res.status(201).json({
         success: true,

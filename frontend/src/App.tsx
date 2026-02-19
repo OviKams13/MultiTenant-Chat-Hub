@@ -32,6 +32,7 @@ const App = () => (
             <Route path="/admin/chatbots/:id/edit" element={<ProtectedRoute requiredRole="admin"><CreateEditShop /></ProtectedRoute>} />
             <Route path="/admin/chatbots/:id/builder" element={<ProtectedRoute requiredRole="admin"><ChatbotBuilder /></ProtectedRoute>} />
             <Route path="/mall" element={<ProtectedRoute requiredRole="user"><MallHome /></ProtectedRoute>} />
+            <Route path="/mall/chatbots/:id" element={<ProtectedRoute requiredRole="user"><ShopDetail /></ProtectedRoute>} />
             <Route path="/mall/shops/:slug" element={<ProtectedRoute requiredRole="user"><ShopDetail /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>

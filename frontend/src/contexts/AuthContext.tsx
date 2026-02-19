@@ -21,7 +21,7 @@ interface AuthContextType {
   role: AppRole | null;
   fullName: string;
   loading: boolean;
-  signUp: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string, role: AppRole) => Promise<AppRole>;
   signIn: (email: string, password: string) => Promise<AppRole>;
   signOut: () => Promise<void>;
 }
@@ -70,9 +70,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.setItem(TOKEN_KEY, payload.token);
   };
 
-  const signUp = async (email: string, password: string) => {
-    const authResult = await apiClient.post<AuthPayload>("/auth/register", { email, password });
+  const signUp = async (email: string, password: string, role: AppRole): Promise<AppRole> => {
+    const authResult = await apiClient.post<AuthPayload>("/auth/register", {
+      email,
+      password,
+      role: role === "admin" ? "ADMIN" : "USER",
+    });
     persistSession(authResult);
+    return mapRole(authResult.user.role);
   };
 
   const signIn = async (email: string, password: string): Promise<AppRole> => {
