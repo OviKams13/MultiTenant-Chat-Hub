@@ -3,12 +3,9 @@ import { AppError } from '../errors/AppError';
 interface AuthPayload {
   email?: unknown;
   password?: unknown;
+  role?: unknown;
 }
 
-// Auth validation runs before service calls to fail fast on malformed client payloads.
-// Register and login share email checks while password policy is stricter on registration.
-// Throwing AppError keeps validation failures aligned with global API response contract.
-// Validation logic stays framework-agnostic to simplify unit testing and service reuse.
 function ensureEmail(email: unknown): string {
   if (typeof email !== 'string' || email.trim().length === 0) {
     throw new AppError('Validation error', 400, 'VALIDATION_ERROR', { email: 'Email is required' });
@@ -23,8 +20,21 @@ function ensureEmail(email: unknown): string {
   return normalized;
 }
 
-// Registration enforces stronger password policy because this is where credentials are created.
-export function validateRegister(payload: AuthPayload): { email: string; password: string } {
+function ensureRole(role: unknown): 'ADMIN' | 'USER' {
+  if (typeof role === 'undefined') {
+    return 'USER';
+  }
+
+  if (role !== 'ADMIN' && role !== 'USER') {
+    throw new AppError('Validation error', 400, 'VALIDATION_ERROR', {
+      role: 'Role must be either ADMIN or USER'
+    });
+  }
+
+  return role;
+}
+
+export function validateRegister(payload: AuthPayload): { email: string; password: string; role: 'ADMIN' | 'USER' } {
   const email = ensureEmail(payload.email);
 
   if (typeof payload.password !== 'string' || payload.password.length < 8) {
@@ -39,10 +49,9 @@ export function validateRegister(payload: AuthPayload): { email: string; passwor
     });
   }
 
-  return { email, password: payload.password };
+  return { email, password: payload.password, role: ensureRole(payload.role) };
 }
 
-// Login only verifies presence/basic shape because complexity rules are only required at creation time.
 export function validateLogin(payload: AuthPayload): { email: string; password: string } {
   const email = ensureEmail(payload.email);
 

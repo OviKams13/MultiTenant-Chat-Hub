@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import AdminLayout from "@/layouts/AdminLayout";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { BlockType, DynamicBlockInstance, ScheduleBlock, adminApi } from "@/lib/admin-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,202 +10,408 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { Phone, HelpCircle, Clock, Pencil, Trash2, Plus } from "lucide-react";
+import { Clock, Pencil, Plus, Tags, Trash2, Type } from "lucide-react";
 
-type BlockType = "CONTACT" | "FAQ" | "SCHEDULE";
+type BuilderDropType = "CONTACT" | "SCHEDULE" | "DYNAMIC_INSTANCE";
 
-interface ContactData { id?: string; entity_id: string; org_name: string; phone: string; email: string; address_text: string; city: string; country: string; hours_text: string; }
-interface FaqData { id?: string; entity_id: string; question: string; answer: string; }
-interface ScheduleData { id?: string; entity_id: string; title: string; day_of_week: string; open_time: string; close_time: string; notes: string; }
+type Mode =
+  | { type: "NONE" }
+  | { type: "CONTACT" }
+  | { type: "SCHEDULE"; data?: Partial<ScheduleBlock> }
+  | { type: "BLOCK_TYPE"; data?: BlockType }
+  | { type: "INSTANCE"; blockType: BlockType; data?: DynamicBlockInstance }
+  | { type: "TAGS" };
+
+interface ContactFormData {
+  org_name: string;
+  phone: string;
+  email: string;
+  address_text: string;
+  city: string;
+  country: string;
+  hours_text: string;
+}
+
+const EMPTY_CONTACT: ContactFormData = {
+  org_name: "",
+  phone: "",
+  email: "",
+  address_text: "",
+  city: "",
+  country: "",
+  hours_text: "",
+};
 
 const ChatbotBuilder = () => {
-  const { id: chatbotId } = useParams<{ id: string }>();
+  const { id } = useParams<{ id: string }>();
+  const chatbotId = Number(id);
+  const { token } = useAuth();
   const { toast } = useToast();
+
   const [shopName, setShopName] = useState("");
-  const [contacts, setContacts] = useState<ContactData[]>([]);
-  const [faqs, setFaqs] = useState<FaqData[]>([]);
-  const [schedules, setSchedules] = useState<ScheduleData[]>([]);
-  const [activeForm, setActiveForm] = useState<{ type: BlockType; data?: any } | null>(null);
+  const [contact, setContact] = useState<any | null>(null);
+  const [schedules, setSchedules] = useState<ScheduleBlock[]>([]);
+  const [blockTypes, setBlockTypes] = useState<BlockType[]>([]);
+  const [instancesByType, setInstancesByType] = useState<Record<number, DynamicBlockInstance[]>>({});
+  const [mode, setMode] = useState<Mode>({ type: "NONE" });
   const [saving, setSaving] = useState(false);
 
   const loadData = useCallback(async () => {
-    if (!chatbotId) return;
-    const { data: bot } = await supabase.from("chatbots").select("display_name").eq("id", chatbotId).single();
-    if (bot) setShopName(bot.display_name);
+    if (!token || !chatbotId) return;
 
-    const { data: items } = await supabase
-      .from("chatbot_items")
-      .select("entity_id, bb_entities(id, entity_type)")
-      .eq("chatbot_id", chatbotId);
-
-    if (!items) return;
-    const entityIds = items.map(i => i.entity_id);
-    if (entityIds.length === 0) { setContacts([]); setFaqs([]); setSchedules([]); return; }
-
-    const [cRes, fRes, sRes] = await Promise.all([
-      supabase.from("bb_contacts").select("*").in("entity_id", entityIds),
-      supabase.from("bb_faqs").select("*").in("entity_id", entityIds),
-      supabase.from("bb_schedules").select("*").in("entity_id", entityIds),
+    const [chatbot, schedulesData, types] = await Promise.all([
+      adminApi.getChatbot(chatbotId, token),
+      adminApi.listSchedules(chatbotId, token),
+      adminApi.listBlockTypes(chatbotId, token),
     ]);
-    setContacts((cRes.data as ContactData[]) || []);
-    setFaqs((fRes.data as FaqData[]) || []);
-    setSchedules((sRes.data as ScheduleData[]) || []);
-  }, [chatbotId]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+    setShopName(chatbot.display_name);
+    setSchedules(schedulesData);
+    setBlockTypes(types);
 
-  const createEntity = async (type: BlockType) => {
-    const { data: entity, error: eErr } = await supabase.from("bb_entities").insert({ entity_type: type }).select().single();
-    if (eErr || !entity) throw eErr;
-    const { error: ciErr } = await supabase.from("chatbot_items").insert({ chatbot_id: chatbotId!, entity_id: entity.id });
-    if (ciErr) throw ciErr;
-    return entity.id;
+    const entries = await Promise.all(
+      types.map(async (type) => {
+        const rows = await adminApi.listDynamicInstances(chatbotId, type.type_id, token);
+        return [type.type_id, rows] as const;
+      })
+    );
+
+    setInstancesByType(Object.fromEntries(entries));
+
+    try {
+      const contactData = await adminApi.getContact(chatbotId, token);
+      setContact(contactData);
+    } catch {
+      setContact(null);
+    }
+  }, [chatbotId, token]);
+
+  useEffect(() => {
+    loadData().catch((error: Error) => {
+      toast({ title: "Failed to load builder", description: error.message, variant: "destructive" });
+    });
+  }, [loadData]);
+
+
+  const openFromDrop = (value: BuilderDropType) => {
+    if (value === "CONTACT") {
+      setMode({ type: "CONTACT" });
+      return;
+    }
+
+    if (value === "SCHEDULE") {
+      setMode({ type: "SCHEDULE" });
+      return;
+    }
+
+    setMode({ type: "BLOCK_TYPE" });
+    toast({ title: "Create custom block", description: "Define your block type before adding block data." });
   };
 
-  const saveContact = async (form: any) => {
-    setSaving(true);
-    try {
-      if (form.id) {
-        await supabase.from("bb_contacts").update({ org_name: form.org_name, phone: form.phone, email: form.email, address_text: form.address_text, city: form.city, country: form.country, hours_text: form.hours_text }).eq("id", form.id);
-      } else {
-        const entityId = await createEntity("CONTACT");
-        await supabase.from("bb_contacts").insert({ entity_id: entityId, ...form });
-      }
-      toast({ title: "Contact saved!" });
-      setActiveForm(null);
-      loadData();
-    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
-    finally { setSaving(false); }
+  const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const type = e.dataTransfer.getData("builder-drop-type") as BuilderDropType;
+    if (!type) return;
+    openFromDrop(type);
   };
 
-  const saveFaq = async (form: any) => {
+  const saveContact = async (form: ContactFormData) => {
+    if (!token) return;
     setSaving(true);
     try {
-      if (form.id) {
-        await supabase.from("bb_faqs").update({ question: form.question, answer: form.answer }).eq("id", form.id);
+      if (contact) {
+        await adminApi.updateContact(chatbotId, form, token);
       } else {
-        const entityId = await createEntity("FAQ");
-        await supabase.from("bb_faqs").insert({ entity_id: entityId, question: form.question, answer: form.answer });
+        await adminApi.createContact(chatbotId, form, token);
       }
-      toast({ title: "FAQ saved!" });
-      setActiveForm(null);
-      loadData();
-    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
-    finally { setSaving(false); }
+      toast({ title: "Contact saved" });
+      setMode({ type: "NONE" });
+      await loadData();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const saveSchedule = async (form: any) => {
+    if (!token) return;
     setSaving(true);
     try {
-      if (form.id) {
-        await supabase.from("bb_schedules").update({ title: form.title, day_of_week: form.day_of_week, open_time: form.open_time, close_time: form.close_time, notes: form.notes }).eq("id", form.id);
+      if (form.entity_id) {
+        await adminApi.updateSchedule(chatbotId, form.entity_id, form, token);
       } else {
-        const entityId = await createEntity("SCHEDULE");
-        await supabase.from("bb_schedules").insert({ entity_id: entityId, title: form.title, day_of_week: form.day_of_week, open_time: form.open_time, close_time: form.close_time, notes: form.notes });
+        await adminApi.createSchedule(chatbotId, form, token);
       }
-      toast({ title: "Schedule saved!" });
-      setActiveForm(null);
-      loadData();
-    } catch (err: any) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
-    finally { setSaving(false); }
+      toast({ title: "Schedule saved" });
+      setMode({ type: "NONE" });
+      await loadData();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const deleteBlock = async (type: string, entityId: string) => {
-    await supabase.from("bb_entities").delete().eq("id", entityId);
-    toast({ title: "Block deleted" });
-    loadData();
+  const saveBlockType = async (payload: {
+    type_name: string;
+    description?: string;
+    schema_definition: Record<string, unknown>;
+    type_id?: number;
+  }) => {
+    if (!token) return;
+    setSaving(true);
+    try {
+      if (payload.type_id) {
+        await adminApi.updateBlockType(
+          chatbotId,
+          payload.type_id,
+          {
+            type_name: payload.type_name,
+            description: payload.description,
+            schema_definition: payload.schema_definition,
+          },
+          token
+        );
+      } else {
+        await adminApi.createBlockType(
+          chatbotId,
+          {
+            type_name: payload.type_name,
+            description: payload.description,
+            schema_definition: payload.schema_definition,
+          },
+          token
+        );
+      }
+      toast({ title: "Block type saved" });
+      setMode({ type: "NONE" });
+      await loadData();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveInstance = async (blockType: BlockType, payload: { entity_id?: number; data: Record<string, unknown> }) => {
+    if (!token) return;
+    setSaving(true);
+    try {
+      if (payload.entity_id) {
+        await adminApi.updateDynamicInstance(chatbotId, blockType.type_id, payload.entity_id, { data: payload.data }, token);
+      } else {
+        await adminApi.createDynamicInstance(chatbotId, blockType.type_id, { data: payload.data }, token);
+      }
+      toast({ title: "Instance saved" });
+      setMode({ type: "NONE" });
+      await loadData();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteType = async (typeId: number) => {
+    if (!token) return;
+    try {
+      await adminApi.deleteBlockType(chatbotId, typeId, token);
+      toast({ title: "Block type deleted" });
+      await loadData();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const deleteSchedule = async (entityId: number) => {
+    if (!token) return;
+    await adminApi.deleteSchedule(chatbotId, entityId, token);
+    toast({ title: "Schedule deleted" });
+    await loadData();
+  };
+
+  const deleteInstance = async (typeId: number, entityId: number) => {
+    if (!token) return;
+    await adminApi.deleteDynamicInstance(chatbotId, typeId, entityId, token);
+    toast({ title: "Instance deleted" });
+    await loadData();
+  };
+
+  const editType = async (typeId: number) => {
+    if (!token) return;
+    const full = await adminApi.getBlockType(chatbotId, typeId, token);
+    setMode({ type: "BLOCK_TYPE", data: full });
+  };
+
+  const editInstance = async (type: BlockType, entityId: number) => {
+    if (!token) return;
+    const full = await adminApi.getDynamicInstance(chatbotId, type.type_id, entityId, token);
+    setMode({ type: "INSTANCE", blockType: type, data: full });
   };
 
   return (
     <AdminLayout>
       <h1 className="text-2xl font-bold mb-6">Builder — {shopName}</h1>
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left: Blocks palette */}
-        <div className="lg:col-span-3">
+        <div className="lg:col-span-7 space-y-4">
           <Card>
-            <CardHeader><CardTitle className="text-base">Blocks</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
-              <Button variant="outline" className="w-full justify-start gap-2" onClick={() => setActiveForm({ type: "CONTACT" })}>
-                <Phone className="h-4 w-4 text-primary" /> Add Contact
-              </Button>
-              <Button variant="outline" className="w-full justify-start gap-2" onClick={() => setActiveForm({ type: "FAQ" })}>
-                <HelpCircle className="h-4 w-4 text-primary" /> Add FAQ
-              </Button>
-              <Button variant="outline" className="w-full justify-start gap-2" onClick={() => setActiveForm({ type: "SCHEDULE" })}>
-                <Clock className="h-4 w-4 text-primary" /> Add Schedule
-              </Button>
+            <CardHeader><CardTitle className="text-base">Drag & drop block palette</CardTitle></CardHeader>
+            <CardContent className="grid sm:grid-cols-3 gap-3">
+              {[
+                { type: "CONTACT", label: "Contact Block" },
+                { type: "SCHEDULE", label: "Schedule Block" },
+                { type: "DYNAMIC_INSTANCE", label: "Custom Block" },
+              ].map((item) => (
+                <div
+                  key={item.type}
+                  draggable
+                  onDragStart={(e) => e.dataTransfer.setData("builder-drop-type", item.type)}
+                  className="rounded-md border bg-muted/30 p-3 text-sm font-medium cursor-grab"
+                >
+                  {item.label}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card onDrop={onDrop} onDragOver={(e) => e.preventDefault()} className="border-dashed">
+            <CardHeader><CardTitle className="text-base">Drop zone</CardTitle></CardHeader>
+            <CardContent className="text-sm text-muted-foreground">Drop a block from the palette here to open its form.</CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle className="text-base">Static blocks</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <div className="rounded-md border p-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Contact</p>
+                    <p className="text-muted-foreground">{contact ? contact.org_name : "No contact configured"}</p>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => setMode({ type: "CONTACT" })}>Edit</Button>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="font-medium text-sm">Schedules</p>
+                  <Button size="sm" variant="outline" onClick={() => setMode({ type: "SCHEDULE" })}><Plus className="h-3 w-3 mr-1" /> Add</Button>
+                </div>
+                {schedules.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No schedules yet</p>
+                ) : (
+                  schedules.map((s) => (
+                    <div key={s.entity_id} className="rounded-md border p-3 mb-2 text-sm">
+                      <p className="font-medium">{s.title}</p>
+                      <p className="text-muted-foreground">{s.day_of_week}: {s.open_time} - {s.close_time}</p>
+                      <div className="flex gap-1 mt-2">
+                        <Button size="sm" variant="ghost" onClick={() => setMode({ type: "SCHEDULE", data: s })}><Pencil className="h-3 w-3" /></Button>
+                        <Button size="sm" variant="ghost" onClick={() => deleteSchedule(s.entity_id)}><Trash2 className="h-3 w-3 text-destructive" /></Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2"><Type className="h-4 w-4" /> Custom blocks</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {blockTypes.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No block types available.</p>
+              ) : (
+                blockTypes.map((type) => (
+                  <div key={type.type_id} className="rounded-md border p-3 text-sm">
+                    <div className="flex justify-between items-center gap-2">
+                      <div>
+                        <p className="font-medium">{type.type_name} {type.is_system ? "(system)" : ""}</p>
+                        <p className="text-muted-foreground">Scope: {type.scope}</p>
+                      </div>
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="ghost" onClick={() => editType(type.type_id)}><Pencil className="h-3 w-3" /></Button>
+                        {!type.is_system && type.scope === "CHATBOT" && (
+                          <Button size="sm" variant="ghost" onClick={() => deleteType(type.type_id)}><Trash2 className="h-3 w-3 text-destructive" /></Button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-2 flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => setMode({ type: "INSTANCE", blockType: type })}>Add block data</Button>
+                    </div>
+                    {(instancesByType[type.type_id] ?? []).map((instance) => (
+                      <div key={instance.entity_id} className="rounded-md border mt-2 p-2">
+                        <p className="text-xs font-medium">Entity #{instance.entity_id}</p>
+                        <pre className="text-[11px] overflow-auto text-muted-foreground">{JSON.stringify(instance.data, null, 2)}</pre>
+                        <div className="flex gap-1 mt-1">
+                          <Button size="sm" variant="ghost" onClick={() => editInstance(type, instance.entity_id)}><Pencil className="h-3 w-3" /></Button>
+                          <Button size="sm" variant="ghost" onClick={() => deleteInstance(type.type_id, instance.entity_id)}><Trash2 className="h-3 w-3 text-destructive" /></Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2"><Tags className="h-4 w-4" /> Tags & Item tags routes</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Button size="sm" variant="outline" onClick={() => setMode({ type: "TAGS" })}>Manage tags / item tags</Button>
             </CardContent>
           </Card>
         </div>
 
-        {/* Middle: Content overview */}
         <div className="lg:col-span-5">
-          <Card>
-            <CardHeader><CardTitle className="text-base">Current Content</CardTitle></CardHeader>
-            <CardContent className="space-y-6">
-              {/* Contacts */}
-              <div>
-                <h3 className="text-sm font-semibold flex items-center gap-2 mb-2"><Phone className="h-4 w-4" /> Contact</h3>
-                {contacts.length === 0 ? <p className="text-xs text-muted-foreground">No contact info yet</p> : contacts.map(c => (
-                  <div key={c.id} className="rounded-md border p-3 mb-2 text-sm">
-                    <p className="font-medium">{c.org_name}</p>
-                    <p className="text-muted-foreground">{c.phone} · {c.email}</p>
-                    <p className="text-muted-foreground">{c.address_text}, {c.city}, {c.country}</p>
-                    <div className="flex gap-1 mt-2">
-                      <Button size="sm" variant="ghost" onClick={() => setActiveForm({ type: "CONTACT", data: c })}><Pencil className="h-3 w-3" /></Button>
-                      <Button size="sm" variant="ghost" onClick={() => deleteBlock("CONTACT", c.entity_id)}><Trash2 className="h-3 w-3 text-destructive" /></Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <Separator />
-              {/* FAQs */}
-              <div>
-                <h3 className="text-sm font-semibold flex items-center gap-2 mb-2"><HelpCircle className="h-4 w-4" /> FAQs</h3>
-                {faqs.length === 0 ? <p className="text-xs text-muted-foreground">No FAQs yet</p> : faqs.map(f => (
-                  <div key={f.id} className="rounded-md border p-3 mb-2 text-sm">
-                    <p className="font-medium">{f.question}</p>
-                    <p className="text-muted-foreground">{f.answer}</p>
-                    <div className="flex gap-1 mt-2">
-                      <Button size="sm" variant="ghost" onClick={() => setActiveForm({ type: "FAQ", data: f })}><Pencil className="h-3 w-3" /></Button>
-                      <Button size="sm" variant="ghost" onClick={() => deleteBlock("FAQ", f.entity_id)}><Trash2 className="h-3 w-3 text-destructive" /></Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <Separator />
-              {/* Schedules */}
-              <div>
-                <h3 className="text-sm font-semibold flex items-center gap-2 mb-2"><Clock className="h-4 w-4" /> Schedules</h3>
-                {schedules.length === 0 ? <p className="text-xs text-muted-foreground">No schedules yet</p> : schedules.map(s => (
-                  <div key={s.id} className="rounded-md border p-3 mb-2 text-sm">
-                    <p className="font-medium">{s.day_of_week}: {s.open_time} – {s.close_time}</p>
-                    {s.notes && <p className="text-muted-foreground">{s.notes}</p>}
-                    <div className="flex gap-1 mt-2">
-                      <Button size="sm" variant="ghost" onClick={() => setActiveForm({ type: "SCHEDULE", data: s })}><Pencil className="h-3 w-3" /></Button>
-                      <Button size="sm" variant="ghost" onClick={() => deleteBlock("SCHEDULE", s.entity_id)}><Trash2 className="h-3 w-3 text-destructive" /></Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right: Block form */}
-        <div className="lg:col-span-4">
-          {!activeForm ? (
+          {mode.type === "NONE" && (
             <Card className="border-dashed">
               <CardContent className="flex items-center justify-center py-16 text-center text-muted-foreground">
-                <p>Select a block from the palette to add or edit content</p>
+                <p>Select a panel action or drop a block to edit builder content.</p>
               </CardContent>
             </Card>
-          ) : activeForm.type === "CONTACT" ? (
-            <ContactForm data={activeForm.data} onSave={saveContact} onCancel={() => setActiveForm(null)} saving={saving} />
-          ) : activeForm.type === "FAQ" ? (
-            <FaqForm data={activeForm.data} onSave={saveFaq} onCancel={() => setActiveForm(null)} saving={saving} />
-          ) : (
-            <ScheduleForm data={activeForm.data} onSave={saveSchedule} onCancel={() => setActiveForm(null)} saving={saving} />
+          )}
+
+          {mode.type === "CONTACT" && (
+            <ContactForm
+              data={contact ?? EMPTY_CONTACT}
+              onSave={saveContact}
+              onCancel={() => setMode({ type: "NONE" })}
+              saving={saving}
+            />
+          )}
+
+          {mode.type === "SCHEDULE" && (
+            <ScheduleForm data={mode.data} onSave={saveSchedule} onCancel={() => setMode({ type: "NONE" })} saving={saving} />
+          )}
+
+          {mode.type === "BLOCK_TYPE" && (
+            <BlockTypeForm data={mode.data} onSave={saveBlockType} onCancel={() => setMode({ type: "NONE" })} saving={saving} />
+          )}
+
+          {mode.type === "INSTANCE" && (
+            <DynamicInstanceForm
+              blockType={mode.blockType}
+              data={mode.data}
+              onSave={(payload) => saveInstance(mode.blockType, payload)}
+              onCancel={() => setMode({ type: "NONE" })}
+              saving={saving}
+            />
+          )}
+
+          {mode.type === "TAGS" && token && (
+            <TagsForm
+              chatbotId={chatbotId}
+              token={token}
+              onCancel={() => setMode({ type: "NONE" })}
+            />
           )}
         </div>
       </div>
@@ -212,12 +419,21 @@ const ChatbotBuilder = () => {
   );
 };
 
-function ContactForm({ data, onSave, onCancel, saving }: { data?: any; onSave: (d: any) => void; onCancel: () => void; saving: boolean }) {
-  const [form, setForm] = useState({
-    id: data?.id || "", entity_id: data?.entity_id || "", org_name: data?.org_name || "", phone: data?.phone || "",
-    email: data?.email || "", address_text: data?.address_text || "", city: data?.city || "", country: data?.country || "", hours_text: data?.hours_text || "",
-  });
-  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm(f => ({ ...f, [k]: e.target.value }));
+function ContactForm({
+  data,
+  onSave,
+  onCancel,
+  saving,
+}: {
+  data: ContactFormData;
+  onSave: (d: ContactFormData) => void;
+  onCancel: () => void;
+  saving: boolean;
+}) {
+  const [form, setForm] = useState<ContactFormData>(data);
+  const set = (k: keyof ContactFormData) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    setForm((f) => ({ ...f, [k]: e.target.value }));
+
   return (
     <Card>
       <CardHeader><CardTitle className="text-base">Contact Block</CardTitle></CardHeader>
@@ -231,34 +447,40 @@ function ContactForm({ data, onSave, onCancel, saving }: { data?: any; onSave: (
           <div><Label>Country</Label><Input value={form.country} onChange={set("country")} /></div>
         </div>
         <div><Label>Opening hours</Label><Textarea value={form.hours_text} onChange={set("hours_text")} /></div>
-        <div className="flex gap-2"><Button onClick={() => onSave(form)} className="gradient-brand text-primary-foreground" disabled={saving}>{saving ? "Saving…" : "Save"}</Button><Button variant="outline" onClick={onCancel}>Cancel</Button></div>
+        <div className="flex gap-2">
+          <Button onClick={() => onSave(form)} className="gradient-brand text-primary-foreground" disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
+          <Button variant="outline" onClick={onCancel}>Cancel</Button>
+        </div>
       </CardContent>
     </Card>
   );
 }
 
-function FaqForm({ data, onSave, onCancel, saving }: { data?: any; onSave: (d: any) => void; onCancel: () => void; saving: boolean }) {
-  const [form, setForm] = useState({ id: data?.id || "", entity_id: data?.entity_id || "", question: data?.question || "", answer: data?.answer || "" });
-  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm(f => ({ ...f, [k]: e.target.value }));
-  return (
-    <Card>
-      <CardHeader><CardTitle className="text-base">FAQ Block</CardTitle></CardHeader>
-      <CardContent className="space-y-3">
-        <div><Label>Question</Label><Input value={form.question} onChange={set("question")} /></div>
-        <div><Label>Answer</Label><Textarea value={form.answer} onChange={set("answer")} rows={4} /></div>
-        <div className="flex gap-2"><Button onClick={() => onSave(form)} className="gradient-brand text-primary-foreground" disabled={saving}>{saving ? "Saving…" : "Save"}</Button><Button variant="outline" onClick={onCancel}>Cancel</Button></div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ScheduleForm({ data, onSave, onCancel, saving }: { data?: any; onSave: (d: any) => void; onCancel: () => void; saving: boolean }) {
+function ScheduleForm({
+  data,
+  onSave,
+  onCancel,
+  saving,
+}: {
+  data?: Partial<ScheduleBlock>;
+  onSave: (d: any) => void;
+  onCancel: () => void;
+  saving: boolean;
+}) {
   const [form, setForm] = useState({
-    id: data?.id || "", entity_id: data?.entity_id || "", title: data?.title || "",
-    day_of_week: data?.day_of_week || "Monday", open_time: data?.open_time || "09:00", close_time: data?.close_time || "18:00", notes: data?.notes || "",
+    entity_id: data?.entity_id,
+    title: data?.title || "",
+    day_of_week: data?.day_of_week || "Monday",
+    open_time: data?.open_time || "09:00",
+    close_time: data?.close_time || "18:00",
+    notes: data?.notes || "",
   });
-  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => setForm(f => ({ ...f, [k]: e.target.value }));
+
+  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+    setForm((f) => ({ ...f, [k]: e.target.value }));
+
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
   return (
     <Card>
       <CardHeader><CardTitle className="text-base">Schedule Block</CardTitle></CardHeader>
@@ -267,15 +489,198 @@ function ScheduleForm({ data, onSave, onCancel, saving }: { data?: any; onSave: 
         <div>
           <Label>Day of week</Label>
           <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={form.day_of_week} onChange={set("day_of_week") as any}>
-            {days.map(d => <option key={d} value={d}>{d}</option>)}
+            {days.map((d) => <option key={d} value={d}>{d}</option>)}
           </select>
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div><Label>Open</Label><Input type="time" value={form.open_time} onChange={set("open_time")} /></div>
           <div><Label>Close</Label><Input type="time" value={form.close_time} onChange={set("close_time")} /></div>
         </div>
-        <div><Label>Notes</Label><Input value={form.notes} onChange={set("notes")} placeholder="Closed on holidays" /></div>
-        <div className="flex gap-2"><Button onClick={() => onSave(form)} className="gradient-brand text-primary-foreground" disabled={saving}>{saving ? "Saving…" : "Save"}</Button><Button variant="outline" onClick={onCancel}>Cancel</Button></div>
+        <div><Label>Notes</Label><Input value={form.notes ?? ""} onChange={set("notes")} placeholder="Closed on holidays" /></div>
+        <div className="flex gap-2">
+          <Button onClick={() => onSave(form)} className="gradient-brand text-primary-foreground" disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
+          <Button variant="outline" onClick={onCancel}>Cancel</Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function BlockTypeForm({
+  data,
+  onSave,
+  onCancel,
+  saving,
+}: {
+  data?: BlockType;
+  onSave: (payload: { type_name: string; description?: string; schema_definition: Record<string, unknown>; type_id?: number }) => void;
+  onCancel: () => void;
+  saving: boolean;
+}) {
+  const [typeName, setTypeName] = useState(data?.type_name || "");
+  const [description, setDescription] = useState(data?.description || "");
+  const [schemaText, setSchemaText] = useState(JSON.stringify(data?.schema_definition || { label: "", fields: [] }, null, 2));
+
+  const handleSave = () => {
+    let schema: Record<string, unknown> = {};
+    try {
+      schema = JSON.parse(schemaText);
+    } catch {
+      return;
+    }
+
+    onSave({
+      type_id: data?.type_id,
+      type_name: typeName,
+      description,
+      schema_definition: schema,
+    });
+  };
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Block type definition</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        <div><Label>Type name</Label><Input value={typeName} onChange={(e) => setTypeName(e.target.value)} /></div>
+        <div><Label>Description</Label><Input value={description} onChange={(e) => setDescription(e.target.value)} /></div>
+        <div>
+          <Label>Schema definition (JSON)</Label>
+          <Textarea rows={10} value={schemaText} onChange={(e) => setSchemaText(e.target.value)} />
+        </div>
+        <div className="flex gap-2">
+          <Button onClick={handleSave} className="gradient-brand text-primary-foreground" disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
+          <Button variant="outline" onClick={onCancel}>Cancel</Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DynamicInstanceForm({
+  blockType,
+  data,
+  onSave,
+  onCancel,
+  saving,
+}: {
+  blockType: BlockType;
+  data?: DynamicBlockInstance;
+  onSave: (payload: { entity_id?: number; data: Record<string, unknown> }) => void;
+  onCancel: () => void;
+  saving: boolean;
+}) {
+  const [jsonData, setJsonData] = useState(JSON.stringify(data?.data || {}, null, 2));
+
+  const handleSave = () => {
+    let parsed: Record<string, unknown> = {};
+    try {
+      parsed = JSON.parse(jsonData);
+    } catch {
+      return;
+    }
+
+    onSave({ entity_id: data?.entity_id, data: parsed });
+  };
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Dynamic instance — {blockType.type_name}</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        <div>
+          <Label>Instance data (JSON)</Label>
+          <Textarea rows={12} value={jsonData} onChange={(e) => setJsonData(e.target.value)} />
+        </div>
+        <div className="flex gap-2">
+          <Button onClick={handleSave} className="gradient-brand text-primary-foreground" disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
+          <Button variant="outline" onClick={onCancel}>Cancel</Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function TagsForm({ chatbotId, token, onCancel }: { chatbotId: number; token: string; onCancel: () => void }) {
+  const { toast } = useToast();
+  const [tags, setTags] = useState<any[]>([]);
+  const [tagCode, setTagCode] = useState("");
+  const [description, setDescription] = useState("");
+  const [category, setCategory] = useState("");
+  const [itemId, setItemId] = useState("");
+  const [itemTagCodes, setItemTagCodes] = useState("");
+
+  const refresh = async () => {
+    const rows = await adminApi.listTags(token);
+    setTags(rows);
+  };
+
+  useEffect(() => {
+    refresh().catch(() => undefined);
+  }, []);
+
+  const createTag = async () => {
+    try {
+      await adminApi.createTag({ tag_code: tagCode, description, category }, token);
+      toast({ title: "Tag created" });
+      setTagCode("");
+      setDescription("");
+      setCategory("");
+      await refresh();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const loadItemTags = async () => {
+    try {
+      const rows = await adminApi.getItemTags(chatbotId, Number(itemId), token);
+      setItemTagCodes(rows.map((r) => r.tag_code).join(", "));
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const saveItemTags = async () => {
+    try {
+      const codes = itemTagCodes.split(",").map((x) => x.trim()).filter(Boolean);
+      await adminApi.updateItemTags(chatbotId, Number(itemId), { tagCodes: codes }, token);
+      toast({ title: "Item tags updated" });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Tags & Item tags</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <Label>Create tag</Label>
+          <Input placeholder="tag_code" value={tagCode} onChange={(e) => setTagCode(e.target.value)} />
+          <Input placeholder="description" value={description} onChange={(e) => setDescription(e.target.value)} />
+          <Input placeholder="category" value={category} onChange={(e) => setCategory(e.target.value)} />
+          <Button size="sm" onClick={createTag}>Create tag</Button>
+        </div>
+
+        <div>
+          <p className="text-sm font-medium mb-1">Existing tags</p>
+          <div className="max-h-28 overflow-auto text-xs border rounded-md p-2">
+            {tags.map((t) => <div key={t.id}>{t.tag_code} ({t.category || "no-category"})</div>)}
+          </div>
+        </div>
+
+        <Separator />
+
+        <div className="space-y-2">
+          <Label>Item tags by item ID</Label>
+          <Input placeholder="item id" value={itemId} onChange={(e) => setItemId(e.target.value)} />
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={loadItemTags}>Load item tags</Button>
+          </div>
+          <Textarea rows={3} placeholder="tag_code_1, tag_code_2" value={itemTagCodes} onChange={(e) => setItemTagCodes(e.target.value)} />
+          <Button size="sm" onClick={saveItemTags}>Save item tags</Button>
+        </div>
+
+        <Button variant="outline" onClick={onCancel}>Close</Button>
       </CardContent>
     </Card>
   );
