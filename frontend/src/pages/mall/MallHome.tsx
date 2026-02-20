@@ -78,7 +78,7 @@ const MallHome = () => {
                       </CardHeader>
                       <CardContent>
                         <Button asChild variant="outline" className="w-full gap-2">
-                          <Link to={`/mall/chatbots/${chatbot.id}`}>Open chatbot <ArrowRight className="h-4 w-4" /></Link>
+                          <Link to={`/mall/chatbots/${chatbot.id}/${encodeURIComponent(chatbot.domain)}`}>Open chatbot <ArrowRight className="h-4 w-4" /></Link>
                         </Button>
                       </CardContent>
                     </Card>

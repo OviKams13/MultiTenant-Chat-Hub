@@ -12,22 +12,22 @@ import { UserChatbotDetail, userApi } from "@/lib/user-api";
 import { useToast } from "@/hooks/use-toast";
 
 const ShopDetail = () => {
-  const { id, slug } = useParams<{ id?: string; slug?: string }>();
-  const chatbotIdParam = id ?? slug;
+  const { id } = useParams<{ id?: string; domain?: string }>();
+  const chatbotId = Number(id);
   const { token } = useAuth();
   const { toast } = useToast();
   const [chatbot, setChatbot] = useState<UserChatbotDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!chatbotIdParam || !token) return;
-    userApi.getChatbotDetail(Number(chatbotIdParam), token)
+    if (!id || Number.isNaN(chatbotId) || !token) return;
+    userApi.getChatbotDetail(chatbotId, token)
       .then(setChatbot)
       .catch((error: Error) => {
         toast({ title: "Failed to load chatbot", description: error.message, variant: "destructive" });
       })
       .finally(() => setLoading(false));
-  }, [chatbotIdParam, token, toast]);
+  }, [id, chatbotId, token, toast]);
 
   if (loading) return <MallLayout><div className="py-16 text-center text-muted-foreground">Loading…</div></MallLayout>;
   if (!chatbot) return <MallLayout><div className="py-16 text-center text-muted-foreground">Chatbot not found</div></MallLayout>;
