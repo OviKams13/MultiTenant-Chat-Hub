@@ -9,6 +9,10 @@ interface AuthInput {
   password: string;
 }
 
+interface RegisterInput extends AuthInput {
+  role: 'ADMIN' | 'USER';
+}
+
 interface UserDTO {
   id: number;
   email: string;
@@ -21,37 +25,31 @@ interface AuthResult {
   token: string;
 }
 
-// AuthService contains all account authentication business rules for admin/owner users.
-// Controllers only call these methods so database and cryptographic concerns remain centralized.
-// Every method returns DTOs without password hashes to prevent accidental credential exposure.
-// This service depends on Role/User models already prepared by Feature 0 bootstrap.
 export class AuthService {
-  // registerAdmin creates a new owner account and immediately returns a JWT session token.
-  async registerAdmin(payload: AuthInput): Promise<AuthResult> {
+  async register(payload: RegisterInput): Promise<AuthResult> {
     const existingUser = await UserModel.findOne({ where: { email: payload.email } });
     if (existingUser) {
       throw new AppError('Email already in use', 409, 'EMAIL_ALREADY_IN_USE');
     }
 
-    const adminRole = await RoleModel.findOne({ where: { role_name: 'ADMIN' } });
-    if (!adminRole) {
-      throw new AppError('ADMIN role is missing. Run seed first.', 500, 'ADMIN_ROLE_MISSING');
+    const role = await RoleModel.findOne({ where: { role_name: payload.role } });
+    if (!role) {
+      throw new AppError(`${payload.role} role is missing. Run seed first.`, 500, `${payload.role}_ROLE_MISSING`);
     }
 
     const passwordHash = await hashPassword(payload.password);
     const createdUser = await UserModel.create({
-      role_id: adminRole.role_id,
+      role_id: role.role_id,
       email: payload.email,
       password_hash: passwordHash
     });
 
-    const userDto = this.toUserDto(createdUser, adminRole.role_name);
+    const userDto = this.toUserDto(createdUser, role.role_name);
     const token = signToken({ userId: userDto.id, email: userDto.email, role: userDto.role });
 
     return { user: userDto, token };
   }
 
-  // login verifies credentials and emits a fresh JWT used by protected endpoints like /auth/me.
   async login(payload: AuthInput): Promise<AuthResult> {
     const user = await UserModel.findOne({
       where: { email: payload.email },
@@ -78,7 +76,6 @@ export class AuthService {
     return { user: userDto, token };
   }
 
-  // getAuthenticatedUser reloads the canonical user profile to avoid trusting stale JWT claims.
   async getAuthenticatedUser(userId: number): Promise<UserDTO> {
     const user = await UserModel.findByPk(userId, {
       include: [{ model: RoleModel, as: 'role' }]
@@ -96,7 +93,6 @@ export class AuthService {
     return this.toUserDto(user, roleName);
   }
 
-  // Private mapper enforces stable API DTO field names independent from database column naming.
   private toUserDto(user: UserModel, roleName: string): UserDTO {
     return {
       id: user.user_id,
