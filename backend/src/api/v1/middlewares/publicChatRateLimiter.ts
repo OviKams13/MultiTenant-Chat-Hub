@@ -1,3 +1,4 @@
+import { Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 
 // Public chat endpoint is intentionally open, so baseline abuse protection is mandatory in v1.
@@ -9,7 +10,7 @@ export const publicChatRateLimiter = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  handler: (_req, res) => {
+  handler: (_req: Request, res: Response) => {
     res.status(429).json({
       success: false,
       data: null,

@@ -1,126 +1,188 @@
-import { NextFunction, Request, Response } from 'express';
+import { NextFunction, Request, RequestHandler, Response } from 'express';
 import { AppError } from '../errors/AppError';
-import { ChatHistoryMessage, ChatRuntimeRequestPayload } from '../interfaces/ChatRuntime';
+import { ChatHistoryMessage, ChatRuntimeRequestBody } from '../interfaces/ChatRuntime';
 
-const MAX_MESSAGE_LENGTH = 2000;
-const MAX_HISTORY_ITEMS = 10;
+export const MAX_MESSAGE_LENGTH = 1000;
+export const MAX_DOMAIN_LENGTH = 255;
+export const MAX_HISTORY_MESSAGES = 20;
+export const MAX_HISTORY_CONTENT_LENGTH = 1000;
 
-// This validator protects the public chat entrypoint before any database or AI-related work starts.
-// We support two caller modes: chatbotId (internal dashboard) and domain (embedded widget runtime).
-// History is intentionally bounded and normalized to reduce prompt-injection surface in v1.
-// The middleware stores a trusted payload on req so controllers can stay thin and deterministic.
-export function validateChatRuntimeRequest(req: Request, _res: Response, next: NextFunction): void {
-  try {
-    const body = (req.body ?? {}) as Record<string, unknown>;
-
-    const chatbotId = parseOptionalChatbotId(body.chatbotId);
-    const domain = parseOptionalDomain(body.domain);
-
-    if (!chatbotId && !domain) {
-      throw new AppError('chatbotId or domain is required', 400, 'VALIDATION_ERROR', {
-        chatbotId: 'Provide chatbotId (number) or domain (string)'
-      });
-    }
-
-    const message = parseMessage(body.message);
-    const history = parseHistory(body.history);
-
-    (req as Request & { chatRuntimePayload?: ChatRuntimeRequestPayload }).chatRuntimePayload = {
-      chatbotId,
-      domain,
-      message,
-      history
-    };
-
-    next();
-  } catch (error) {
-    next(error);
-  }
+interface ValidationDetail {
+  field: string;
+  issue: string;
+  index?: number;
 }
 
-function parseOptionalChatbotId(value: unknown): number | undefined {
-  if (typeof value === 'undefined' || value === null || value === '') {
+// validateChatRuntimeBody enforces the HTTP contract of the public chat endpoint before business logic runs.
+// This function is intentionally pure so unit tests can verify every rule without spinning up Express.
+// We validate only shape/limits; runtime trust boundaries (prompt handling strategy) stay in service layer.
+// The returned object is normalized and safe for controller/service consumption in strict TypeScript mode.
+export function validateChatRuntimeBody(raw: unknown): ChatRuntimeRequestBody {
+  const body = (raw ?? {}) as Record<string, unknown>;
+  const errors: ValidationDetail[] = [];
+
+  const message = normalizeMessage(body.message, errors);
+  const chatbotId = normalizeChatbotId(body.chatbotId, errors);
+  const domain = normalizeDomain(body.domain, errors);
+  const history = normalizeHistory(body.history, errors);
+
+  if (typeof chatbotId === 'undefined' && typeof domain === 'undefined') {
+    errors.push({ field: 'chatbotId|domain', issue: 'ONE_REQUIRED' });
+  }
+
+  if (errors.length > 0) {
+    throw new AppError('Invalid chat runtime request body', 400, 'VALIDATION_ERROR', {
+      errors
+    });
+  }
+
+  return {
+    chatbotId,
+    domain,
+    message,
+    history
+  };
+}
+
+// validateChatRuntimeRequest is the Express middleware used by /api/v1/public/chat route.
+// It stores a normalized payload on req to keep controller logic thin and deterministic.
+// The middleware never authenticates users because this endpoint is intentionally visitor-facing.
+// Any AppError is forwarded to errorHandler to preserve the API envelope format.
+export const validateChatRuntimeRequest: RequestHandler = (req: Request, _res: Response, next: NextFunction): void => {
+  try {
+    const validated = validateChatRuntimeBody(req.body);
+    (req as Request & { chatRuntimePayload?: ChatRuntimeRequestBody }).chatRuntimePayload = validated;
+    next();
+  } catch (error) {
+    if (error instanceof AppError) {
+      next(error);
+      return;
+    }
+
+    next(new AppError('Invalid chat runtime request body', 400, 'VALIDATION_ERROR'));
+  }
+};
+
+// normalizeMessage checks requiredness, emptiness, and payload size to prevent oversized public requests.
+// Message trim is applied here so downstream services receive canonical text without duplicated sanitation.
+function normalizeMessage(value: unknown, errors: ValidationDetail[]): string {
+  if (typeof value !== 'string') {
+    errors.push({ field: 'message', issue: 'REQUIRED' });
+    return '';
+  }
+
+  const normalized = value.trim();
+  if (normalized.length === 0) {
+    errors.push({ field: 'message', issue: 'EMPTY' });
+  }
+
+  if (normalized.length > MAX_MESSAGE_LENGTH) {
+    errors.push({ field: 'message', issue: 'TOO_LONG' });
+  }
+
+  return normalized;
+}
+
+// normalizeChatbotId validates dashboard mode identifier and rejects non-integer or non-positive values.
+// We do not coerce strings to numbers to keep contract strict and prevent ambiguous client behavior.
+function normalizeChatbotId(value: unknown, errors: ValidationDetail[]): number | undefined {
+  if (typeof value === 'undefined') {
     return undefined;
   }
 
-  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
-    throw new AppError('Validation error', 400, 'VALIDATION_ERROR', {
-      chatbotId: 'chatbotId must be a positive integer'
-    });
+  if (typeof value !== 'number') {
+    errors.push({ field: 'chatbotId', issue: 'INVALID_TYPE' });
+    return undefined;
+  }
+
+  if (!Number.isInteger(value) || value <= 0) {
+    errors.push({ field: 'chatbotId', issue: 'INVALID_VALUE' });
+    return undefined;
   }
 
   return value;
 }
 
-function parseOptionalDomain(value: unknown): string | undefined {
-  if (typeof value === 'undefined' || value === null || value === '') {
+// normalizeDomain validates widget mode identifier and applies lightweight normalization through trim/lowercase.
+// Domain format rules stay pragmatic in v1 (simple dot-based shape + max length), not DNS-perfect validation.
+function normalizeDomain(value: unknown, errors: ValidationDetail[]): string | undefined {
+  if (typeof value === 'undefined') {
     return undefined;
   }
 
   if (typeof value !== 'string') {
-    throw new AppError('Validation error', 400, 'VALIDATION_ERROR', {
-      domain: 'domain must be a non-empty string'
-    });
+    errors.push({ field: 'domain', issue: 'INVALID_TYPE' });
+    return undefined;
   }
 
   const normalized = value.trim().toLowerCase();
+  if (normalized.length === 0) {
+    errors.push({ field: 'domain', issue: 'EMPTY' });
+    return undefined;
+  }
+
+  if (normalized.length > MAX_DOMAIN_LENGTH) {
+    errors.push({ field: 'domain', issue: 'TOO_LONG' });
+  }
+
   const domainRegex = /^\S+\.\S+$/;
   if (!domainRegex.test(normalized)) {
-    throw new AppError('Validation error', 400, 'VALIDATION_ERROR', {
-      domain: 'domain format is invalid'
-    });
+    errors.push({ field: 'domain', issue: 'INVALID_FORMAT' });
   }
 
   return normalized;
 }
 
-function parseMessage(value: unknown): string {
-  if (typeof value !== 'string') {
-    throw new AppError('Validation error', 400, 'VALIDATION_ERROR', {
-      message: 'message is required and must be a string'
-    });
-  }
-
-  const normalized = value.trim();
-  if (!normalized || normalized.length > MAX_MESSAGE_LENGTH) {
-    throw new AppError('Validation error', 400, 'VALIDATION_ERROR', {
-      message: `message must be between 1 and ${MAX_MESSAGE_LENGTH} characters`
-    });
-  }
-
-  return normalized;
-}
-
-function parseHistory(value: unknown): ChatHistoryMessage[] {
+// normalizeHistory validates shape and limits of previous conversation without trusting its semantic truth.
+// History remains optional and is never interpreted as system-level instruction in this middleware.
+// We reject abusive sizes here; deeper truncation strategy remains a service-layer responsibility.
+function normalizeHistory(value: unknown, errors: ValidationDetail[]): ChatHistoryMessage[] | undefined {
   if (typeof value === 'undefined') {
-    return [];
+    return undefined;
   }
 
   if (!Array.isArray(value)) {
-    throw new AppError('Validation error', 400, 'VALIDATION_ERROR', {
-      history: 'history must be an array when provided'
-    });
+    errors.push({ field: 'history', issue: 'INVALID_TYPE' });
+    return undefined;
+  }
+
+  if (value.length > MAX_HISTORY_MESSAGES) {
+    errors.push({ field: 'history', issue: 'TOO_MANY_MESSAGES' });
   }
 
   const normalized: ChatHistoryMessage[] = [];
-  for (const item of value) {
-    if (!item || typeof item !== 'object') {
-      throw new AppError('Validation error', 400, 'VALIDATION_ERROR', {
-        history: 'history items must be objects'
-      });
+
+  value.forEach((entry, index) => {
+    if (!entry || typeof entry !== 'object') {
+      errors.push({ field: 'history', issue: 'INVALID_ITEM', index });
+      return;
     }
 
-    const role = (item as Record<string, unknown>).role;
-    const content = (item as Record<string, unknown>).content;
+    const role = (entry as Record<string, unknown>).role;
+    const content = (entry as Record<string, unknown>).content;
 
-    if ((role !== 'user' && role !== 'assistant') || typeof content !== 'string' || content.trim().length === 0) {
-      throw new AppError('Validation error', 400, 'VALIDATION_ERROR', {
-        history: 'each history item requires role (user|assistant) and non-empty content'
-      });
+    if (role !== 'user' && role !== 'assistant') {
+      errors.push({ field: 'history.role', issue: 'INVALID_ROLE', index });
     }
 
-    normalized.push({ role, content: content.trim().slice(0, MAX_MESSAGE_LENGTH) });
-  }
+    if (typeof content !== 'string') {
+      errors.push({ field: 'history.content', issue: 'INVALID_TYPE', index });
+      return;
+    }
 
-  return normalized.slice(-MAX_HISTORY_ITEMS);
+    const trimmedContent = content.trim();
+    if (trimmedContent.length === 0) {
+      errors.push({ field: 'history.content', issue: 'EMPTY', index });
+    }
+
+    if (trimmedContent.length > MAX_HISTORY_CONTENT_LENGTH) {
+      errors.push({ field: 'history.content', issue: 'TOO_LONG', index });
+    }
+
+    if ((role === 'user' || role === 'assistant') && trimmedContent.length > 0) {
+      normalized.push({ role, content: trimmedContent });
+    }
+  });
+
+  return normalized;
 }
