@@ -22,7 +22,9 @@ interface ContextItem {
 // In v1 we keep answer generation deterministic and server-controlled to avoid trusting user-provided history.
 // Source items are returned so frontend/debug tooling can explain where the response context came from.
 export class ChatRuntimeService {
-  async handleChat(payload: ChatRuntimeRequestPayload): Promise<ChatRuntimeResponseDTO> {
+  // chat is the public runtime entry used by controller layer for feature 8.3 orchestration.
+  // It resolves the tenant scope, fetches relevant contextual blocks, and returns answer + traceable sources.
+  async chat(payload: ChatRuntimeRequestPayload): Promise<ChatRuntimeResponseDTO> {
     const chatbot = await this.resolveChatbot(payload);
     const contextItems = await this.loadContextItems(Number(chatbot.chatbot_id));
 
@@ -36,6 +38,11 @@ export class ChatRuntimeService {
         tags: item.tags
       }))
     };
+  }
+
+  // handleChat is kept as a backward-compatible alias for existing tests/integrations during migration.
+  async handleChat(payload: ChatRuntimeRequestPayload): Promise<ChatRuntimeResponseDTO> {
+    return this.chat(payload);
   }
 
   private async resolveChatbot(payload: ChatRuntimeRequestPayload): Promise<ChatbotModel> {

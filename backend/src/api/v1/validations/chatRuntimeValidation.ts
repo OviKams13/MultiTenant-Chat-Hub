@@ -51,6 +51,8 @@ export function validateChatRuntimeBody(raw: unknown): ChatRuntimeRequestBody {
 export const validateChatRuntimeRequest: RequestHandler = (req: Request, _res: Response, next: NextFunction): void => {
   try {
     const validated = validateChatRuntimeBody(req.body);
+    // Validation middleware normalizes req.body so downstream controller can consume typed fields directly.
+    req.body = validated;
     (req as Request & { chatRuntimePayload?: ChatRuntimeRequestBody }).chatRuntimePayload = validated;
     next();
   } catch (error) {
