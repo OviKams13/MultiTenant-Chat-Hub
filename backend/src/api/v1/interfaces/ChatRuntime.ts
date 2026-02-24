@@ -1,7 +1,7 @@
-// Chat runtime interfaces define the public contract used by the visitor-facing chat endpoint.
-// The endpoint accepts either chatbotId (dashboard/internal mode) or domain (widget/external mode).
-// History is treated as previous conversation context and never as a trusted system instruction.
-// These types are shared by validation, controller, and service layers to keep strict typing aligned.
+// Chat runtime interfaces define the visitor-facing contract shared across validation, controller, and service layers.
+// The public endpoint supports both widget mode (domain) and dashboard mode (chatbotId) in the same payload.
+// History messages are accepted only as user/assistant turns and are never treated as trusted system instructions.
+// Result and source item types are stabilized early so upcoming runtime features can evolve without breaking controllers.
 
 export type ChatHistoryRole = 'user' | 'assistant';
 
@@ -10,23 +10,25 @@ export interface ChatHistoryMessage {
   content: string;
 }
 
-export interface ChatRuntimeRequestBody {
+export interface ChatRuntimeInput {
   chatbotId?: number;
   domain?: string;
   message: string;
   history?: ChatHistoryMessage[];
 }
 
-// Backward-compatible alias keeps existing service/controller imports stable while validation evolves.
-export type ChatRuntimeRequestPayload = ChatRuntimeRequestBody;
-
 export interface ChatRuntimeSourceItem {
   entity_id: number;
-  entity_type: string;
+  entity_type: 'CONTACT' | 'SCHEDULE' | 'DYNAMIC';
   tags: string[];
 }
 
-export interface ChatRuntimeResponseDTO {
+export interface ChatRuntimeResult {
   answer: string;
   sourceItems: ChatRuntimeSourceItem[];
 }
+
+// Backward-compatible aliases keep existing imports operational while feature 8 contracts converge.
+export type ChatRuntimeRequestBody = ChatRuntimeInput;
+export type ChatRuntimeRequestPayload = ChatRuntimeInput;
+export type ChatRuntimeResponseDTO = ChatRuntimeResult;

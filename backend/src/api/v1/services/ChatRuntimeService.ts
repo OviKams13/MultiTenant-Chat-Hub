@@ -1,181 +1,62 @@
-import { Op } from 'sequelize';
 import { AppError } from '../errors/AppError';
-import { ChatRuntimeRequestPayload, ChatRuntimeResponseDTO, ChatRuntimeSourceItem } from '../interfaces/ChatRuntime';
-import { BbContactModel } from '../models/BbContactModel';
-import { BbEntityModel } from '../models/BbEntityModel';
-import { BbScheduleModel } from '../models/BbScheduleModel';
-import { BlockTypeModel } from '../models/BlockTypeModel';
-import { ChatbotItemModel } from '../models/ChatbotItemModel';
-import { ChatbotItemTagModel } from '../models/ChatbotItemTagModel';
+import { ChatRuntimeInput, ChatRuntimeResult } from '../interfaces/ChatRuntime';
 import { ChatbotModel } from '../models/ChatbotModel';
-import { TagModel } from '../models/TagModel';
+import { TagService } from './TagService';
 
-interface ContextItem {
-  entityId: number;
-  entityType: string;
-  tags: string[];
-  payload: Record<string, unknown>;
+interface ResolvedChatbotContext {
+  chatbotId: number;
+  displayName: string;
 }
 
-// ChatRuntimeService orchestrates the public runtime flow for visitor questions.
-// It resolves chatbot scope by chatbotId/domain, loads tenant-owned context blocks, and builds a safe answer payload.
-// In v1 we keep answer generation deterministic and server-controlled to avoid trusting user-provided history.
-// Source items are returned so frontend/debug tooling can explain where the response context came from.
+// ChatRuntimeService owns public-chat business orchestration and keeps controllers free from domain logic.
+// Feature 8.4 intentionally covers only chatbot resolution and message-to-tag classification steps.
+// Data retrieval and LLM response generation are deferred to features 8.5–8.7 and are documented as TODOs.
+// Multi-tenant safety starts here: once chatbot is resolved, all later queries must remain scoped to chatbotId.
 export class ChatRuntimeService {
-  // chat is the public runtime entry used by controller layer for feature 8.3 orchestration.
-  // It resolves the tenant scope, fetches relevant contextual blocks, and returns answer + traceable sources.
-  async chat(payload: ChatRuntimeRequestPayload): Promise<ChatRuntimeResponseDTO> {
-    const chatbot = await this.resolveChatbot(payload);
-    const contextItems = await this.loadContextItems(Number(chatbot.chatbot_id));
+  // chat is the main runtime entrypoint called by the public controller for every visitor question.
+  // It resolves tenant scope, classifies the message into query tags, and enforces NO_RELEVANT_TAG behavior.
+  static async chat(input: ChatRuntimeInput): Promise<ChatRuntimeResult> {
+    const { chatbotId, displayName } = await this.resolveChatbot(input);
+    const queryTags = await TagService.classifyQuestion(input.message);
 
-    const answer = this.composeAnswer(chatbot.display_name, payload.message, payload.history ?? [], contextItems);
+    if (queryTags.length === 0) {
+      throw new AppError('No relevant tags for this question', 400, 'NO_RELEVANT_TAG');
+    }
 
+    // TODO(feature-8.5/8.6/8.7): fetch tenant-scoped items by queryTags and call LLM with assembled context.
+    // We intentionally return a placeholder to keep Feature 8.4 focused on resolution + classification only.
     return {
-      answer,
-      sourceItems: contextItems.map((item) => ({
-        entity_id: item.entityId,
-        entity_type: item.entityType,
-        tags: item.tags
-      }))
+      answer: `Chat runtime pipeline not fully implemented yet for ${displayName} (chatbot ${chatbotId}).`,
+      sourceItems: []
     };
   }
 
-  // handleChat is kept as a backward-compatible alias for existing tests/integrations during migration.
-  async handleChat(payload: ChatRuntimeRequestPayload): Promise<ChatRuntimeResponseDTO> {
-    return this.chat(payload);
+  // handleChat remains as compatibility alias for older callers while codebase migrates to chat(...).
+  static async handleChat(input: ChatRuntimeInput): Promise<ChatRuntimeResult> {
+    return this.chat(input);
   }
 
-  private async resolveChatbot(payload: ChatRuntimeRequestPayload): Promise<ChatbotModel> {
-    if (payload.chatbotId) {
-      const chatbot = await ChatbotModel.findByPk(payload.chatbotId);
-      if (!chatbot) {
-        throw new AppError('Chatbot not found', 404, 'CHATBOT_NOT_FOUND');
-      }
+  // resolveChatbot selects chatbot by chatbotId first, then by domain, matching validation/controller contracts.
+  // If neither key exists (unexpected after validation) we fail fast with a controlled validation-style AppError.
+  // This resolved context is the strict tenant boundary for all downstream runtime operations.
+  private static async resolveChatbot(input: ChatRuntimeInput): Promise<ResolvedChatbotContext> {
+    let chatbot: ChatbotModel | null = null;
 
-      return chatbot;
+    if (typeof input.chatbotId === 'number') {
+      chatbot = await ChatbotModel.findByPk(input.chatbotId);
+    } else if (input.domain) {
+      chatbot = await ChatbotModel.findOne({ where: { domain: input.domain } });
+    } else {
+      throw new AppError('chatbotId or domain is required', 400, 'VALIDATION_ERROR');
     }
-
-    const chatbot = await ChatbotModel.findOne({
-      where: { domain: payload.domain }
-    });
 
     if (!chatbot) {
-      throw new AppError('Chatbot not found for this domain', 404, 'CHATBOT_NOT_FOUND');
+      throw new AppError('Chatbot not found', 404, 'CHATBOT_NOT_FOUND');
     }
 
-    return chatbot;
-  }
-
-  private async loadContextItems(chatbotId: number): Promise<ContextItem[]> {
-    const items = await ChatbotItemModel.findAll({
-      where: { chatbot_id: chatbotId },
-      order: [['created_at', 'DESC']]
-    });
-
-    const context: ContextItem[] = [];
-    for (const item of items) {
-      const entity = await BbEntityModel.findByPk(item.entity_id);
-      if (!entity) {
-        continue;
-      }
-
-      const tags = await this.findTagsForItem(Number(item.item_id));
-      const contextItem = await this.hydrateContextEntity(Number(entity.entity_id), entity, tags);
-      if (contextItem) {
-        context.push(contextItem);
-      }
-    }
-
-    return context;
-  }
-
-  private async findTagsForItem(itemId: number): Promise<string[]> {
-    const itemTags = await ChatbotItemTagModel.findAll({
-      where: { item_id: itemId },
-      include: [{ model: TagModel, as: 'tag' }]
-    });
-
-    return itemTags
-      .map((row) => (row.get('tag') as TagModel | undefined)?.tag_code)
-      .filter((tagCode): tagCode is string => typeof tagCode === 'string');
-  }
-
-  private async hydrateContextEntity(entityId: number, entity: BbEntityModel, tags: string[]): Promise<ContextItem | null> {
-    if (entity.entity_type === 'CONTACT') {
-      const contact = await BbContactModel.findByPk(entityId);
-      if (!contact) return null;
-
-      return {
-        entityId,
-        entityType: 'CONTACT',
-        tags,
-        payload: {
-          org_name: contact.org_name,
-          phone: contact.phone,
-          email: contact.email,
-          address_text: contact.address_text,
-          city: contact.city,
-          country: contact.country,
-          hours_text: contact.hours_text
-        }
-      };
-    }
-
-    if (entity.entity_type === 'SCHEDULE') {
-      const schedule = await BbScheduleModel.findByPk(entityId);
-      if (!schedule) return null;
-
-      return {
-        entityId,
-        entityType: 'SCHEDULE',
-        tags,
-        payload: {
-          title: schedule.title,
-          day_of_week: schedule.day_of_week,
-          open_time: schedule.open_time,
-          close_time: schedule.close_time,
-          notes: schedule.notes
-        }
-      };
-    }
-
-    if (entity.type_id) {
-      const dynamicType = await BlockTypeModel.findOne({
-        where: {
-          type_id: entity.type_id,
-          [Op.or]: [{ chatbot_id: null }, { chatbot_id: { [Op.ne]: null } }]
-        }
-      });
-
-      return {
-        entityId,
-        entityType: dynamicType ? `DYNAMIC:${dynamicType.type_name}` : 'DYNAMIC',
-        tags,
-        payload: (entity.data ?? {}) as Record<string, unknown>
-      };
-    }
-
-    return null;
-  }
-
-  private composeAnswer(
-    chatbotName: string,
-    message: string,
-    history: Array<{ role: 'user' | 'assistant'; content: string }>,
-    contextItems: ContextItem[]
-  ): string {
-    if (contextItems.length === 0) {
-      return `I could not find configured knowledge for ${chatbotName} yet. Please ask the owner to add contact, schedules, or custom block data.`;
-    }
-
-    const lastTurns = history.slice(-10).map((entry) => `${entry.role}: ${entry.content}`).join(' | ');
-    const condensedContext = contextItems
-      .slice(0, 6)
-      .map((item) => `${item.entityType} ${JSON.stringify(item.payload)}`)
-      .join(' ; ');
-
-    return `Based on ${chatbotName} data, here is the best answer to "${message}": ${condensedContext}.${
-      lastTurns ? ` Previous conversation (for continuity only): ${lastTurns}` : ''
-    }`;
+    return {
+      chatbotId: Number(chatbot.chatbot_id),
+      displayName: chatbot.display_name
+    };
   }
 }

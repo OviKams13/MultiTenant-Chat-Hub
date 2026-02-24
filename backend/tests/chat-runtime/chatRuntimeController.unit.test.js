@@ -40,8 +40,8 @@ test('ChatRuntimeController.handleChat should call service and return success en
   const res = createMockResponse();
   const nextCalls = [];
 
-  const original = ChatRuntimeService.prototype.chat;
-  ChatRuntimeService.prototype.chat = async (input) => {
+  const original = ChatRuntimeService.chat;
+  ChatRuntimeService.chat = async (input) => {
     assert.deepEqual(input, req.body);
     return {
       answer: 'Test answer',
@@ -63,7 +63,7 @@ test('ChatRuntimeController.handleChat should call service and return success en
     });
     assert.equal(nextCalls.length, 0);
   } finally {
-    ChatRuntimeService.prototype.chat = original;
+    ChatRuntimeService.chat = original;
   }
 });
 
@@ -72,9 +72,9 @@ test('ChatRuntimeController.handleChat should forward service errors to next', a
   const res = createMockResponse();
   let capturedError = null;
 
-  const original = ChatRuntimeService.prototype.chat;
+  const original = ChatRuntimeService.chat;
   const expectedError = new AppError('Chatbot not found', 404, 'CHATBOT_NOT_FOUND');
-  ChatRuntimeService.prototype.chat = async () => {
+  ChatRuntimeService.chat = async () => {
     throw expectedError;
   };
 
@@ -87,6 +87,6 @@ test('ChatRuntimeController.handleChat should forward service errors to next', a
     assert.equal(res.statusCode, null);
     assert.equal(res.payload, null);
   } finally {
-    ChatRuntimeService.prototype.chat = original;
+    ChatRuntimeService.chat = original;
   }
 });

@@ -3,10 +3,10 @@ import { AppError } from '../errors/AppError';
 import { CreateTagPayload, TagDTO, TagFilter, TagResolutionMap } from '../interfaces/Tag';
 import { TagModel } from '../models/TagModel';
 
-// TagService centralizes tag business logic shared by static blocks, dynamic blocks, and admin APIs.
-// Default tag resolvers are pure in-memory maps so future block services can reuse deterministic defaults.
-// Database-backed methods enforce consistency for list/create flows and tag-code resolution to IDs.
-// Every public method returns DTO-safe data to keep transport and persistence models loosely coupled.
+// TagService centralizes tag business logic shared by static blocks, dynamic blocks, admin APIs, and runtime chat.
+// Runtime classification is deterministic in v1 and uses synonyms_json only (no LLM) for predictable behavior.
+// Instance methods keep existing admin flows intact, while static classifyQuestion serves public chat quickly.
+// Every method returns normalized values so controllers/services remain thin and decoupled from raw ORM rows.
 export class TagService {
   // Default tags for static entities provide baseline semantics for contact and schedule builders.
   private staticDefaultMap: Record<string, string[]> = {
@@ -18,6 +18,40 @@ export class TagService {
   private dynamicDefaultMap: Record<string, string[]> = {
     PERSONAL_INFORMATION: ['PERSONAL_INFO']
   };
+
+  // classifyQuestion maps a visitor message to tag codes using DB-managed synonyms_json dictionaries.
+  // This method is intentionally case-insensitive and returns unique tag codes to avoid duplicate filtering later.
+  // If no synonym matches, we return an empty array so runtime service can raise NO_RELEVANT_TAG explicitly.
+  static async classifyQuestion(message: string): Promise<string[]> {
+    const normalizedMessage = message.trim().toLowerCase();
+    if (!normalizedMessage) {
+      return [];
+    }
+
+    const tags = await TagModel.findAll();
+    const matched = new Set<string>();
+
+    for (const tag of tags) {
+      const synonyms = this.extractSynonyms(tag.synonyms_json, tag.tag_code);
+      const hasMatch = synonyms.some((synonym) => normalizedMessage.includes(synonym));
+      if (hasMatch) {
+        matched.add(tag.tag_code);
+      }
+    }
+
+    return Array.from(matched.values());
+  }
+
+  // extractSynonyms converts DB JSON shape into normalized lower-case terms and includes tag_code fallback.
+  // Including tag_code lets explicit words like "hours" map even if synonyms_json is missing for old seed data.
+  private static extractSynonyms(rawSynonyms: unknown, tagCode: string): string[] {
+    const fromJson = Array.isArray(rawSynonyms)
+      ? rawSynonyms.filter((value): value is string => typeof value === 'string').map((value) => value.trim().toLowerCase())
+      : [];
+
+    const fallbackCode = tagCode.trim().toLowerCase();
+    return [...new Set([...fromJson, fallbackCode].filter((value) => value.length > 0))];
+  }
 
   // getDefaultTagsForStatic returns predefined tag codes used when creating static chatbot blocks.
   getDefaultTagsForStatic(entity_type: string): string[] {
