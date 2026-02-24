@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import AdminLayout from "@/layouts/AdminLayout";
 import { useAuth } from "@/contexts/AuthContext";
@@ -32,6 +32,16 @@ interface ContactFormData {
   hours_text: string;
 }
 
+type DynamicFieldType = "string" | "number" | "boolean" | "date" | "select";
+
+interface SchemaField {
+  name: string;
+  label: string;
+  type: DynamicFieldType;
+  required: boolean;
+  options?: string[];
+}
+
 const EMPTY_CONTACT: ContactFormData = {
   org_name: "",
   phone: "",
@@ -41,6 +51,44 @@ const EMPTY_CONTACT: ContactFormData = {
   country: "",
   hours_text: "",
 };
+
+function parseSchemaFields(schemaDefinition: Record<string, unknown> | undefined): SchemaField[] {
+  const fields = schemaDefinition?.fields;
+  if (!Array.isArray(fields)) return [];
+
+  return fields
+    .map((field) => {
+      if (!field || typeof field !== "object") return null;
+
+      const rawName = (field as Record<string, unknown>).name;
+      const rawLabel = (field as Record<string, unknown>).label;
+      const rawType = (field as Record<string, unknown>).type;
+      const rawRequired = (field as Record<string, unknown>).required;
+      const rawOptions = (field as Record<string, unknown>).options;
+
+      if (typeof rawName !== "string" || rawName.trim().length === 0) return null;
+      if (typeof rawLabel !== "string" || rawLabel.trim().length === 0) return null;
+
+      const normalizedType =
+        rawType === "number" || rawType === "boolean" || rawType === "date" || rawType === "select" ? rawType : "string";
+
+      return {
+        name: rawName.trim(),
+        label: rawLabel.trim(),
+        type: normalizedType,
+        required: Boolean(rawRequired),
+        options: Array.isArray(rawOptions) ? rawOptions.filter((option): option is string => typeof option === "string") : undefined,
+      } satisfies SchemaField;
+    })
+    .filter((field): field is SchemaField => field !== null);
+}
+
+function formatFieldValue(value: unknown, type: DynamicFieldType): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (type === "boolean") return value ? "True" : "False";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
 
 const ChatbotBuilder = () => {
   const { id } = useParams<{ id: string }>();
@@ -347,7 +395,18 @@ const ChatbotBuilder = () => {
                     {(instancesByType[type.type_id] ?? []).map((instance) => (
                       <div key={instance.entity_id} className="rounded-md border mt-2 p-2">
                         <p className="text-xs font-medium">Entity #{instance.entity_id}</p>
-                        <pre className="text-[11px] overflow-auto text-muted-foreground">{JSON.stringify(instance.data, null, 2)}</pre>
+                        <div className="mt-2 space-y-1 text-xs">
+                          {parseSchemaFields(type.schema_definition).length > 0 ? (
+                            parseSchemaFields(type.schema_definition).map((field) => (
+                              <p key={`${instance.entity_id}-${field.name}`} className="text-muted-foreground">
+                                <span className="font-medium text-foreground">{field.label}:</span>{" "}
+                                {formatFieldValue(instance.data[field.name], field.type)}
+                              </p>
+                            ))
+                          ) : (
+                            <pre className="text-[11px] overflow-auto text-muted-foreground">{JSON.stringify(instance.data, null, 2)}</pre>
+                          )}
+                        </div>
                         <div className="flex gap-1 mt-1">
                           <Button size="sm" variant="ghost" onClick={() => editInstance(type, instance.entity_id)}><Pencil className="h-3 w-3" /></Button>
                           <Button size="sm" variant="ghost" onClick={() => deleteInstance(type.type_id, instance.entity_id)}><Trash2 className="h-3 w-3 text-destructive" /></Button>
@@ -519,21 +578,42 @@ function BlockTypeForm({
 }) {
   const [typeName, setTypeName] = useState(data?.type_name || "");
   const [description, setDescription] = useState(data?.description || "");
-  const [schemaText, setSchemaText] = useState(JSON.stringify(data?.schema_definition || { label: "", fields: [] }, null, 2));
+  const [fields, setFields] = useState<SchemaField[]>(() => {
+    const parsed = parseSchemaFields(data?.schema_definition);
+    return parsed.length > 0 ? parsed : [{ name: "", label: "", type: "string", required: false }];
+  });
+
+  const addField = () => {
+    setFields((current) => [...current, { name: "", label: "", type: "string", required: false }]);
+  };
+
+  const removeField = (index: number) => {
+    setFields((current) => current.filter((_, currentIndex) => currentIndex !== index));
+  };
+
+  const updateField = <K extends keyof SchemaField>(index: number, key: K, value: SchemaField[K]) => {
+    setFields((current) =>
+      current.map((field, currentIndex) => (currentIndex === index ? { ...field, [key]: value } : field))
+    );
+  };
+
+  const normalizedFields = fields
+    .map((field) => ({
+      ...field,
+      name: field.name.trim(),
+      label: field.label.trim(),
+      options: field.options?.map((option) => option.trim()).filter(Boolean),
+    }))
+    .filter((field) => field.name.length > 0 && field.label.length > 0);
 
   const handleSave = () => {
-    let schema: Record<string, unknown> = {};
-    try {
-      schema = JSON.parse(schemaText);
-    } catch {
-      return;
-    }
-
     onSave({
       type_id: data?.type_id,
       type_name: typeName,
       description,
-      schema_definition: schema,
+      schema_definition: {
+        fields: normalizedFields,
+      },
     });
   };
 
@@ -544,8 +624,70 @@ function BlockTypeForm({
         <div><Label>Type name</Label><Input value={typeName} onChange={(e) => setTypeName(e.target.value)} /></div>
         <div><Label>Description</Label><Input value={description} onChange={(e) => setDescription(e.target.value)} /></div>
         <div>
-          <Label>Schema definition (JSON)</Label>
-          <Textarea rows={10} value={schemaText} onChange={(e) => setSchemaText(e.target.value)} />
+          <div className="flex items-center justify-between mb-2">
+            <Label>Schema fields</Label>
+            <Button type="button" size="sm" variant="outline" onClick={addField}><Plus className="h-3 w-3 mr-1" /> Add field</Button>
+          </div>
+          <div className="space-y-2">
+            {fields.map((field, index) => (
+              <div key={`${index}-${field.name}`} className="rounded-md border p-2 space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <Label>Name</Label>
+                    <Input value={field.name} placeholder="store_name" onChange={(e) => updateField(index, "name", e.target.value)} />
+                  </div>
+                  <div>
+                    <Label>Label</Label>
+                    <Input value={field.label} placeholder="Store Name" onChange={(e) => updateField(index, "label", e.target.value)} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div>
+                    <Label>Type</Label>
+                    <select
+                      className="w-full h-9 rounded-md border bg-background px-3 text-sm"
+                      value={field.type}
+                      onChange={(e) => updateField(index, "type", e.target.value as DynamicFieldType)}
+                    >
+                      <option value="string">string</option>
+                      <option value="number">number</option>
+                      <option value="boolean">boolean</option>
+                      <option value="date">date</option>
+                      <option value="select">select</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label>Required</Label>
+                    <select
+                      className="w-full h-9 rounded-md border bg-background px-3 text-sm"
+                      value={field.required ? "true" : "false"}
+                      onChange={(e) => updateField(index, "required", e.target.value === "true")}
+                    >
+                      <option value="true">true</option>
+                      <option value="false">false</option>
+                    </select>
+                  </div>
+                  <div className="flex items-end">
+                    <Button type="button" size="sm" variant="ghost" onClick={() => removeField(index)} disabled={fields.length === 1}>
+                      <Trash2 className="h-3 w-3 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+
+                {field.type === "select" && (
+                  <div>
+                    <Label>Options (comma separated)</Label>
+                    <Input
+                      value={(field.options ?? []).join(", ")}
+                      placeholder="Small, Medium, Large"
+                      onChange={(e) => updateField(index, "options", e.target.value.split(",").map((value) => value.trim()).filter(Boolean))}
+                    />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
         <div className="flex gap-2">
           <Button onClick={handleSave} className="gradient-brand text-primary-foreground" disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
@@ -569,27 +711,71 @@ function DynamicInstanceForm({
   onCancel: () => void;
   saving: boolean;
 }) {
-  const [jsonData, setJsonData] = useState(JSON.stringify(data?.data || {}, null, 2));
+  const schemaFields = useMemo(() => parseSchemaFields(blockType.schema_definition), [blockType.schema_definition]);
+  const [formData, setFormData] = useState<Record<string, unknown>>(() => data?.data || {});
 
-  const handleSave = () => {
-    let parsed: Record<string, unknown> = {};
-    try {
-      parsed = JSON.parse(jsonData);
-    } catch {
+  useEffect(() => {
+    setFormData(data?.data || {});
+  }, [data?.entity_id]);
+
+  const updateFieldValue = (field: SchemaField, value: string) => {
+    if (field.type === "number") {
+      setFormData((current) => ({ ...current, [field.name]: value === "" ? "" : Number(value) }));
       return;
     }
 
-    onSave({ entity_id: data?.entity_id, data: parsed });
+    if (field.type === "boolean") {
+      setFormData((current) => ({ ...current, [field.name]: value === "true" }));
+      return;
+    }
+
+    setFormData((current) => ({ ...current, [field.name]: value }));
+  };
+
+  const handleSave = () => {
+    onSave({ entity_id: data?.entity_id, data: formData });
   };
 
   return (
     <Card>
       <CardHeader><CardTitle className="text-base">Dynamic instance — {blockType.type_name}</CardTitle></CardHeader>
       <CardContent className="space-y-3">
-        <div>
-          <Label>Instance data (JSON)</Label>
-          <Textarea rows={12} value={jsonData} onChange={(e) => setJsonData(e.target.value)} />
-        </div>
+        {schemaFields.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No schema fields found for this block type.</p>
+        ) : (
+          schemaFields.map((field) => (
+            <div key={field.name}>
+              <Label>{field.label} ({field.name}) {field.required ? "*" : ""}</Label>
+              {field.type === "select" ? (
+                <select
+                  className="w-full h-9 rounded-md border bg-background px-3 text-sm"
+                  value={String(formData[field.name] ?? "")}
+                  onChange={(e) => updateFieldValue(field, e.target.value)}
+                >
+                  <option value="">Select an option</option>
+                  {(field.options ?? []).map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              ) : field.type === "boolean" ? (
+                <select
+                  className="w-full h-9 rounded-md border bg-background px-3 text-sm"
+                  value={String(formData[field.name] ?? "false")}
+                  onChange={(e) => updateFieldValue(field, e.target.value)}
+                >
+                  <option value="true">true</option>
+                  <option value="false">false</option>
+                </select>
+              ) : (
+                <Input
+                  type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
+                  value={String(formData[field.name] ?? "")}
+                  onChange={(e) => updateFieldValue(field, e.target.value)}
+                />
+              )}
+            </div>
+          ))
+        )}
         <div className="flex gap-2">
           <Button onClick={handleSave} className="gradient-brand text-primary-foreground" disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
           <Button variant="outline" onClick={onCancel}>Cancel</Button>
