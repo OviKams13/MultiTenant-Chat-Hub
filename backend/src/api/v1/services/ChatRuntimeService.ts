@@ -26,7 +26,9 @@ export class ChatRuntimeService {
     // TODO(feature-8.5/8.6/8.7): fetch tenant-scoped items by queryTags and call LLM with assembled context.
     // We intentionally return a placeholder to keep Feature 8.4 focused on resolution + classification only.
     return {
-      answer: `Chat runtime pipeline not fully implemented yet for ${displayName} (chatbot ${chatbotId}).`,
+      answer:
+        `Chat runtime pipeline not fully implemented yet for ${displayName} (chatbot ${chatbotId}). ` +
+        `Classification is active and matched tags: ${queryTags.join(', ')}.`,
       sourceItems: []
     };
   }
