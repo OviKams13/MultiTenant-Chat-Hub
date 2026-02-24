@@ -1,7 +1,7 @@
 // KnowledgeItem interfaces define the normalized runtime context passed to later pipeline phases.
-// Feature 8.5 focuses on building this typed structure from tenant-scoped DB rows in batch.
-// The shape is intentionally serializable so Feature 8.6/8.7 can convert it into ranked LLM context text.
-// Each variant carries entity identity metadata to keep source attribution stable in API responses.
+// Feature 8.5 builds this structure from tenant-scoped DB rows, while Feature 8.6 ranks and slices it.
+// createdAt is mandatory because context selection sorts by recency inside each business-priority bucket.
+// The union is intentionally serializable so Feature 8.7 can transform it into a deterministic prompt string.
 
 export type KnowledgeItemKind = 'CONTACT' | 'SCHEDULE' | 'DYNAMIC';
 

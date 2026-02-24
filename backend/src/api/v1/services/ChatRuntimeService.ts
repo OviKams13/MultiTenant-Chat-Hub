@@ -1,7 +1,8 @@
 import { Op } from 'sequelize';
+import { MAX_CONTEXT_ITEMS } from '../../../config/constants';
 import { AppError } from '../errors/AppError';
 import { ChatRuntimeInput, ChatRuntimeResult } from '../interfaces/ChatRuntime';
-import { KnowledgeItem } from '../interfaces/KnowledgeItem';
+import { KnowledgeItem, KnowledgeItemKind } from '../interfaces/KnowledgeItem';
 import { BbContactModel } from '../models/BbContactModel';
 import { BbEntityModel } from '../models/BbEntityModel';
 import { BbScheduleModel } from '../models/BbScheduleModel';
@@ -23,11 +24,11 @@ interface RawItemRef {
 }
 
 // ChatRuntimeService owns public-chat orchestration and keeps HTTP/controller layers business-agnostic.
-// Feature 8.5 adds tenant-scoped batch retrieval to build KnowledgeItem[] without N+1 queries.
-// Ranking/limiting of this context is intentionally deferred to Feature 8.6 to keep responsibilities isolated.
-// Final LLM response generation is deferred to Feature 8.7 while this service prepares the raw context set.
+// Feature 8.5 added tenant-scoped batch retrieval to build KnowledgeItem[] without N+1 queries.
+// Feature 8.6 adds deterministic ranking + trimming so context stays inside LLM window budgets.
+// Final LLM response generation is still deferred to Feature 8.7; this service prepares selected context now.
 export class ChatRuntimeService {
-  // chat resolves tenant scope, classifies user intent tags, then prepares raw context items for next pipeline phases.
+  // chat resolves tenant scope, classifies user intent, fetches knowledge, selects context, and returns source attribution.
   static async chat(input: ChatRuntimeInput): Promise<ChatRuntimeResult> {
     const { chatbotId, displayName } = await this.resolveChatbot(input);
     const queryTags = await TagService.classifyQuestion(input.message);
@@ -37,12 +38,15 @@ export class ChatRuntimeService {
     }
 
     const knowledgeItems = await this.fetchKnowledgeItems(chatbotId, queryTags);
+    const selectedItems = this.selectContextItems(knowledgeItems);
+    const contextText = this.buildContextText(selectedItems);
 
-    // Feature 8.6 will rank/slice knowledgeItems by kind priority and recency before context serialization.
-    // Feature 8.7 will call LLMService with that selected context; for now we return source attribution only.
+    // contextText will be passed to LLMService.askGemini in Feature 8.7 with message/history/chatbot metadata.
+    // Placeholder answer is kept for now while proving selectedItems/sourceItems are context-window safe.
+    void contextText;
     return {
       answer: `Chat runtime pipeline not fully implemented yet for ${displayName} (chatbot ${chatbotId}).`,
-      sourceItems: knowledgeItems.map((item) => ({
+      sourceItems: selectedItems.map((item) => ({
         entity_id: item.entityId,
         entity_type: item.kind,
         tags: queryTags
@@ -56,7 +60,7 @@ export class ChatRuntimeService {
   }
 
   // fetchKnowledgeItems retrieves all tenant-scoped entities matching query tags using batched table reads.
-  // The method intentionally returns unsorted/unlimited context because ordering policy belongs to Feature 8.6.
+  // The method intentionally returns the full raw set; selection/ranking is performed later in selectContextItems.
   private static async fetchKnowledgeItems(chatbotId: number, queryTags: string[]): Promise<KnowledgeItem[]> {
     const tagLinks = await ChatbotItemTagModel.findAll({
       attributes: ['item_id'],
@@ -98,7 +102,7 @@ export class ChatRuntimeService {
       }
     }
 
-    // Empty retrieval is a valid state in 8.5; downstream phases decide whether to answer with empty context.
+    // Empty retrieval is a valid state; downstream policy decides how to answer with zero context.
     if (orderedEntityIds.length === 0) {
       return [];
     }
@@ -192,9 +196,6 @@ export class ChatRuntimeService {
     }
 
     const knowledgeItems: KnowledgeItem[] = [];
-
-    // Feature 8.6 sorting policy (documented only): CONTACT first, then SCHEDULE, then DYNAMIC; newest first per kind.
-    // If CONTACT/SCHEDULE already fill MAX_CONTEXT_ITEMS, dynamic items are naturally dropped after ranking in 8.6.
     for (const entityId of orderedEntityIds) {
       const entity = entityById.get(entityId);
       if (!entity) {
@@ -241,6 +242,68 @@ export class ChatRuntimeService {
     }
 
     return knowledgeItems;
+  }
+
+  // getKindPriority enforces strict business precedence: CONTACT first, then SCHEDULE, then DYNAMIC.
+  // This is intentionally non-proportional: once the limit is hit, lower-priority kinds are sacrificed first.
+  private static getKindPriority(kind: KnowledgeItemKind): number {
+    if (kind === 'CONTACT') return 1;
+    if (kind === 'SCHEDULE') return 2;
+    return 3;
+  }
+
+  // selectContextItems applies deterministic ordering and trims to MAX_CONTEXT_ITEMS.
+  // Sorting policy: kind priority ASC, createdAt DESC, then entityId ASC for stable tie-breaking.
+  // When CONTACT + SCHEDULE already fill the window, DYNAMIC items are fully excluded by design.
+  private static selectContextItems(allItems: KnowledgeItem[]): KnowledgeItem[] {
+    const sortedItems = [...allItems].sort((a, b) => {
+      const priorityDiff = this.getKindPriority(a.kind) - this.getKindPriority(b.kind);
+      if (priorityDiff !== 0) {
+        return priorityDiff;
+      }
+
+      const createdAtDiff = b.createdAt.getTime() - a.createdAt.getTime();
+      if (createdAtDiff !== 0) {
+        return createdAtDiff;
+      }
+
+      return a.entityId - b.entityId;
+    });
+
+    return sortedItems.slice(0, MAX_CONTEXT_ITEMS);
+  }
+
+  // buildContextText converts selected items into deterministic plain text consumed by future LLM prompts.
+  // The output mirrors selectedItems order so source attribution and prompt context stay aligned.
+  // Each section is prefixed by kind labels to reduce ambiguity when Gemini receives mixed data types.
+  private static buildContextText(selectedItems: KnowledgeItem[]): string {
+    const lines: string[] = ['Chatbot knowledge context:'];
+
+    for (const item of selectedItems) {
+      if (item.kind === 'CONTACT') {
+        lines.push(`CONTACT (entityId=${item.entityId}):`);
+        for (const [key, value] of Object.entries(item.contact)) {
+          lines.push(`  ${key}: ${String(value)}`);
+        }
+        continue;
+      }
+
+      if (item.kind === 'SCHEDULE') {
+        lines.push(`SCHEDULE (entityId=${item.entityId}):`);
+        for (const row of item.schedules) {
+          const day = String(row.day_of_week ?? row.day ?? 'UNKNOWN_DAY');
+          const open = String(row.open_time ?? row.open ?? 'N/A');
+          const close = String(row.close_time ?? row.close ?? 'N/A');
+          lines.push(`  day: ${day}, open: ${open}, close: ${close}`);
+        }
+        continue;
+      }
+
+      lines.push(`DYNAMIC (entityId=${item.entityId}, type=${item.typeName}):`);
+      lines.push(`  data: ${JSON.stringify(item.data)}`);
+    }
+
+    return lines.join('\n');
   }
 
   // resolveChatbot enforces the multi-tenant boundary: all downstream queries must use this resolved chatbotId.

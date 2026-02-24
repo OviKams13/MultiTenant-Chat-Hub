@@ -7,7 +7,7 @@ const { ChatbotModel } = require('../../src/api/v1/models/ChatbotModel');
 const { TagService } = require('../../src/api/v1/services/TagService');
 
 // withChatMocks isolates chat orchestration by patching chatbot resolution, classification, and context retrieval.
-// This test focuses on the 8.4 + 8.5 integration contract, not on model-level SQL execution details.
+// This test focuses on the 8.4 + 8.5/8.6 integration contract, not on model-level SQL execution details.
 async function withChatMocks(mocks, run) {
   const original = {
     findByPk: ChatbotModel.findByPk,
@@ -28,6 +28,7 @@ async function withChatMocks(mocks, run) {
   }
 }
 
+// This validates that chat() uses retrieved knowledge items to populate source attribution for API consumers.
 test('ChatRuntimeService.chat should call fetchKnowledgeItems and map sourceItems from returned knowledge', async () => {
   await withChatMocks(
     {
@@ -51,6 +52,30 @@ test('ChatRuntimeService.chat should call fetchKnowledgeItems and map sourceItem
   );
 });
 
+// This validates Feature 8.6 trimming behavior indirectly through chat(): sourceItems must match selected context window.
+test('ChatRuntimeService.chat should limit sourceItems to MAX_CONTEXT_ITEMS based on selected context', async () => {
+  await withChatMocks(
+    {
+      findByPk: async () => ({ chatbot_id: 9, display_name: 'Limit Bot' }),
+      classifyQuestion: async () => ['CONTACT'],
+      fetchKnowledgeItems: async () => [
+        { kind: 'CONTACT', entityId: 1, createdAt: new Date('2026-01-05T00:00:00.000Z'), contact: {} },
+        { kind: 'CONTACT', entityId: 2, createdAt: new Date('2026-01-04T00:00:00.000Z'), contact: {} },
+        { kind: 'CONTACT', entityId: 3, createdAt: new Date('2026-01-03T00:00:00.000Z'), contact: {} },
+        { kind: 'SCHEDULE', entityId: 4, createdAt: new Date('2026-01-02T00:00:00.000Z'), schedules: [] },
+        { kind: 'SCHEDULE', entityId: 5, createdAt: new Date('2026-01-01T00:00:00.000Z'), schedules: [] },
+        { kind: 'DYNAMIC', entityId: 6, createdAt: new Date('2026-01-06T00:00:00.000Z'), typeId: 22, typeName: 'PROGRAM', data: {} }
+      ]
+    },
+    async () => {
+      const result = await ChatRuntimeService.chat({ chatbotId: 9, message: 'Need contact details' });
+      assert.equal(result.sourceItems.length, 5);
+      assert.equal(result.sourceItems.some((item) => item.entity_id === 6), false);
+    }
+  );
+});
+
+// This confirms guardrail order: when no tags are classified, runtime exits before context retrieval work starts.
 test('ChatRuntimeService.chat should throw NO_RELEVANT_TAG before fetchKnowledgeItems is called', async () => {
   await withChatMocks(
     {
