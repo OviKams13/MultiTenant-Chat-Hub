@@ -6,16 +6,36 @@ import { KnowledgeItem } from './KnowledgeItem';
 // Result and source item types are stabilized early so upcoming runtime features can evolve without breaking controllers.
 export type ChatHistoryRole = 'user' | 'assistant';
 
-export interface ChatHistoryMessage {
+export interface ChatRuntimeHistoryMessage {
   role: ChatHistoryRole;
   content: string;
+}
+
+// Backward-compatible alias keeps pre-8.7 imports stable while introducing explicit runtime naming.
+export type ChatHistoryMessage = ChatRuntimeHistoryMessage;
+
+// ChatRuntimeLLMParams is the normalized prompt input passed from runtime orchestration to LLMService.
+// It carries resolved tenant identity, validated user question, context text, and optional bounded history.
+// maxHistoryMessages allows per-call overrides while still honoring global defaults from constants.
+export interface ChatRuntimeLLMParams {
+  chatbotDisplayName: string;
+  message: string;
+  history?: ChatRuntimeHistoryMessage[];
+  contextText: string;
+  maxHistoryMessages?: number;
+  locale?: string;
+}
+
+// ChatRuntimeLLMResult is optional today but keeps an explicit shape ready for future metadata fields.
+export interface ChatRuntimeLLMResult {
+  answer: string;
 }
 
 export interface ChatRuntimeInput {
   chatbotId?: number;
   domain?: string;
   message: string;
-  history?: ChatHistoryMessage[];
+  history?: ChatRuntimeHistoryMessage[];
 }
 
 export interface ChatRuntimeSourceItem {

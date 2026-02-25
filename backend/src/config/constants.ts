@@ -4,6 +4,10 @@
 // This value can be tuned per deployment once prompt/token budgets are measured in production.
 export const MAX_CONTEXT_ITEMS = 5;
 
+// Runtime chat history limit sent to Gemini to keep prompt size predictable in public chat requests.
+// This protects latency and cost while still preserving enough recent turns for conversational continuity.
+export const MAX_CHAT_HISTORY_MESSAGES = 5;
+
 // Gemini API key loaded from environment variables.
 // This secret must stay backend-only and must never be exposed to frontend bundles.
 // Do not log this value and do not commit .env files to source control.
