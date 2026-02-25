@@ -7,17 +7,19 @@ const { ChatbotModel } = require('../../src/api/v1/models/ChatbotModel');
 const { TagService } = require('../../src/api/v1/services/TagService');
 
 // withMocks patches model/service methods for one test block and restores them afterward.
-// This pattern keeps feature 8.4 tests focused on runtime branching logic instead of database behavior.
+// This keeps runtime tests deterministic while the database retrieval internals evolve across feature steps.
 async function withMocks(mocks, run) {
   const original = {
     findByPk: ChatbotModel.findByPk,
     findOne: ChatbotModel.findOne,
-    classifyQuestion: TagService.classifyQuestion
+    classifyQuestion: TagService.classifyQuestion,
+    fetchKnowledgeItems: ChatRuntimeService.fetchKnowledgeItems
   };
 
   if (mocks.findByPk) ChatbotModel.findByPk = mocks.findByPk;
   if (mocks.findOne) ChatbotModel.findOne = mocks.findOne;
   if (mocks.classifyQuestion) TagService.classifyQuestion = mocks.classifyQuestion;
+  if (mocks.fetchKnowledgeItems) ChatRuntimeService.fetchKnowledgeItems = mocks.fetchKnowledgeItems;
 
   try {
     await run();
@@ -25,11 +27,11 @@ async function withMocks(mocks, run) {
     ChatbotModel.findByPk = original.findByPk;
     ChatbotModel.findOne = original.findOne;
     TagService.classifyQuestion = original.classifyQuestion;
+    ChatRuntimeService.fetchKnowledgeItems = original.fetchKnowledgeItems;
   }
 }
 
-// expectAppError ensures service failures keep machine-readable status/code contracts.
-// Runtime controller and global error handler rely on these values for consistent API output.
+// expectAppError verifies machine-readable error codes consumed by HTTP error middleware.
 async function expectAppError(promiseFactory, expectedCode) {
   try {
     await promiseFactory();
@@ -40,16 +42,19 @@ async function expectAppError(promiseFactory, expectedCode) {
   }
 }
 
-test('ChatRuntimeService.chat should resolve chatbot by chatbotId and return placeholder result', async () => {
+test('ChatRuntimeService.chat should resolve chatbot by chatbotId and return mapped source items', async () => {
   await withMocks(
     {
       findByPk: async () => ({ chatbot_id: 9, display_name: 'MallBot' }),
-      classifyQuestion: async () => ['CONTACT']
+      classifyQuestion: async () => ['CONTACT'],
+      fetchKnowledgeItems: async () => [{ kind: 'CONTACT', entityId: 44, createdAt: new Date(), contact: {} }]
     },
     async () => {
       const result = await ChatRuntimeService.chat({ chatbotId: 9, message: 'where are you?' });
       assert.equal(typeof result.answer, 'string');
-      assert.deepEqual(result.sourceItems, []);
+      assert.equal(result.sourceItems.length, 1);
+      assert.equal(result.sourceItems[0].entity_id, 44);
+      assert.equal(result.sourceItems[0].entity_type, 'CONTACT');
     }
   );
 });
@@ -61,7 +66,8 @@ test('ChatRuntimeService.chat should resolve chatbot by domain when chatbotId is
         assert.equal(where.domain, 'acme.com');
         return { chatbot_id: 7, display_name: 'Acme Assistant' };
       },
-      classifyQuestion: async () => ['HOURS']
+      classifyQuestion: async () => ['HOURS'],
+      fetchKnowledgeItems: async () => []
     },
     async () => {
       const result = await ChatRuntimeService.chat({ domain: 'acme.com', message: 'opening hours?' });

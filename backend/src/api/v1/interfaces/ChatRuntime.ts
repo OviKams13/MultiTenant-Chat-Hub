@@ -1,8 +1,9 @@
+import { KnowledgeItem } from './KnowledgeItem';
+
 // Chat runtime interfaces define the visitor-facing contract shared across validation, controller, and service layers.
 // The public endpoint supports both widget mode (domain) and dashboard mode (chatbotId) in the same payload.
 // History messages are accepted only as user/assistant turns and are never treated as trusted system instructions.
 // Result and source item types are stabilized early so upcoming runtime features can evolve without breaking controllers.
-
 export type ChatHistoryRole = 'user' | 'assistant';
 
 export interface ChatHistoryMessage {
@@ -27,6 +28,9 @@ export interface ChatRuntimeResult {
   answer: string;
   sourceItems: ChatRuntimeSourceItem[];
 }
+
+// Raw context is returned by service internals before ranking/limiting in the next runtime feature.
+export type ChatRuntimeRawContext = KnowledgeItem[];
 
 // Backward-compatible aliases keep existing imports operational while feature 8 contracts converge.
 export type ChatRuntimeRequestBody = ChatRuntimeInput;
