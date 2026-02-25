@@ -42,7 +42,7 @@ export class LLMService {
       const result = await model.generateContent({
         // systemInstruction is passed to Gemini as a dedicated system-level instruction, not as a "user" message.
         systemInstruction: {
-          role: 'system',
+          // Gemini systemInstruction content should be provided as instruction parts (role omitted for compatibility).
           parts: [{ text: systemInstruction }]
         },
         contents
@@ -60,7 +60,13 @@ export class LLMService {
       }
 
       // Map low-level Gemini errors to an internal LLMError with a high-level code.
-      throw this.mapGeminiError(err);
+      const mappedError = this.mapGeminiError(err);
+      // Logging the mapped code helps operators diagnose why a tenant request returned LLM_UNAVAILABLE in production.
+      console.error('[LLMService] Gemini request failed', {
+        mappedCode: mappedError.code,
+        originalMessage: err instanceof Error ? err.message : String(err)
+      });
+      throw mappedError;
     }
   }
 

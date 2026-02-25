@@ -46,6 +46,7 @@ test('LLMService.askGemini should return text answer and include system instruct
   );
 
   assert.ok(capturedPayload.systemInstruction.parts[0].text.includes('Chatbot A'));
+  assert.equal(typeof capturedPayload.systemInstruction.role, 'undefined');
   assert.ok(capturedPayload.contents[capturedPayload.contents.length - 1].parts[0].text.includes('Question de l\'utilisateur'));
   assert.ok(capturedPayload.contents[capturedPayload.contents.length - 1].parts[0].text.includes('SCHEDULE (entityId=1)'));
 });
