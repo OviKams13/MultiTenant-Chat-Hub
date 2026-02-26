@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import MallLayout from "@/layouts/MallLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -11,17 +11,32 @@ import { useAuth } from "@/contexts/AuthContext";
 import { UserChatbotDetail, userApi } from "@/lib/user-api";
 import { useToast } from "@/hooks/use-toast";
 
+// ShopDetail loads one chatbot context for end users and shows static/dynamic data before runtime chat starts.
+// The page now consumes both chatbot id and domain from URL so chat integration can target the right tenant.
+// We keep existing data tabs untouched while wiring the floating widget to the resolved tenant domain.
+// Domain is normalized from URL first, then fallback to backend detail payload for robust routing behavior.
 const ShopDetail = () => {
-  const { id } = useParams<{ id?: string; domain?: string }>();
+  const { id, domain } = useParams<{ id?: string; domain?: string }>();
   const chatbotId = Number(id);
   const { token } = useAuth();
   const { toast } = useToast();
   const [chatbot, setChatbot] = useState<UserChatbotDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // resolvedDomain ensures the widget can call public chat by domain even when URL segment is encoded.
+  const resolvedDomain = useMemo(() => {
+    if (domain) {
+      return decodeURIComponent(domain).trim().toLowerCase();
+    }
+
+    return chatbot?.domain?.trim().toLowerCase() ?? "";
+  }, [domain, chatbot?.domain]);
+
+  // loadChatbotDetail hydrates all UI tabs and keeps the domain available for runtime widget integration.
   useEffect(() => {
     if (!id || Number.isNaN(chatbotId) || !token) return;
-    userApi.getChatbotDetail(chatbotId, token)
+    userApi
+      .getChatbotDetail(chatbotId, token)
       .then(setChatbot)
       .catch((error: Error) => {
         toast({ title: "Failed to load chatbot", description: error.message, variant: "destructive" });
@@ -114,14 +129,7 @@ const ShopDetail = () => {
                       <CardTitle className="text-base">{block.type_name} #{index + 1}</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="grid md:grid-cols-2 gap-3">
-                        {Object.entries(instance).map(([key, value]) => (
-                          <div key={key} className="rounded-md border p-3">
-                            <p className="text-xs uppercase text-muted-foreground mb-1">{key}</p>
-                            <p className="text-sm break-words">{typeof value === "string" ? value : JSON.stringify(value)}</p>
-                          </div>
-                        ))}
-                      </div>
+                      <pre className="text-xs bg-secondary rounded p-3 overflow-auto">{JSON.stringify(instance, null, 2)}</pre>
                     </CardContent>
                   </Card>
                 ))}
@@ -131,7 +139,8 @@ const ShopDetail = () => {
         ))}
       </Tabs>
 
-      <ChatWidget shopName={chatbot.display_name} />
+      {/* ChatWidget now calls /api/v1/public/chat using domain from URL context so tenant scope follows current page. */}
+      <ChatWidget shopName={chatbot.display_name} domain={resolvedDomain} />
     </MallLayout>
   );
 };
