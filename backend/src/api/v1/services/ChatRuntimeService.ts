@@ -48,7 +48,9 @@ export class ChatRuntimeService {
         message: input.message,
         history: input.history,
         contextText,
-        maxHistoryMessages: MAX_CHAT_HISTORY_MESSAGES
+        maxHistoryMessages: MAX_CHAT_HISTORY_MESSAGES,
+        // English runtime locale keeps chatbot answers aligned with the current product language requirement.
+        locale: 'en'
       });
 
       return {
@@ -63,7 +65,7 @@ export class ChatRuntimeService {
       // ChatRuntimeService maps low-level LLMError to a domain-level LLM_UNAVAILABLE error.
       if (err instanceof LLMError) {
         throw new AppError(
-          'Le service de génération de réponse est temporairement indisponible.',
+          'The answer generation service is temporarily unavailable.',
           503,
           'LLM_UNAVAILABLE'
         );

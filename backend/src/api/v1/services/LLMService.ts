@@ -4,10 +4,10 @@ import { ChatRuntimeHistoryMessage, ChatRuntimeLLMParams } from '../interfaces/C
 
 type LLMErrorCode = 'TIMEOUT' | 'QUOTA_EXCEEDED' | 'UNAVAILABLE' | 'UNKNOWN';
 
-// LLMError represents low-level errors when calling the Gemini API (timeouts, quota, etc.).
-// This technical error is intentionally local to the LLM boundary and should be mapped by ChatRuntimeService.
-// Keeping these codes explicit makes incident triage easier when admins report runtime answer failures.
-// The controller layer never exposes these raw codes directly to public API consumers.
+// LLMError represents low-level failures while calling Gemini (timeouts, quota, transport, provider outages).
+// This class is intentionally technical and should be translated to AppError by ChatRuntimeService.
+// Keeping explicit codes helps operations identify whether issues come from quota, availability, or unknown failures.
+// Controllers and clients should never depend on these internal LLM codes directly.
 export class LLMError extends Error {
   code: LLMErrorCode;
 
@@ -19,10 +19,10 @@ export class LLMError extends Error {
 }
 
 export class LLMService {
-  // askGemini builds a strict system policy and sends tenant-scoped context to Gemini for final answer generation.
-  // The method receives only sanitized runtime inputs (message/history/contextText) and never touches Express/DB objects.
-  // Multi-tenant safety relies on ChatRuntimeService preparing contextText exclusively from the resolved chatbot scope.
-  // If Gemini fails, the method normalizes SDK errors into LLMError so upper layers can return stable API errors.
+  // askGemini builds the prompt payload for one tenant chatbot and executes the Gemini request.
+  // It uses only sanitized runtime inputs (message/history/context) and avoids any database/framework dependency.
+  // The function enforces deterministic prompt policy so responses stay grounded in tenant-provided context.
+  // On provider failure, this method normalizes errors into LLMError so upper layers can return stable API contracts.
   static async askGemini(params: ChatRuntimeLLMParams): Promise<string> {
     const {
       chatbotDisplayName,
@@ -40,9 +40,8 @@ export class LLMService {
     try {
       const model = getGeminiModel();
       const result = await model.generateContent({
-        // systemInstruction is passed to Gemini as a dedicated system-level instruction, not as a "user" message.
+        // systemInstruction is sent through the dedicated instruction channel (not mixed with user messages).
         systemInstruction: {
-          // Gemini systemInstruction content should be provided as instruction parts (role omitted for compatibility).
           parts: [{ text: systemInstruction }]
         },
         contents
@@ -59,9 +58,9 @@ export class LLMService {
         throw err;
       }
 
-      // Map low-level Gemini errors to an internal LLMError with a high-level code.
+      // Map low-level Gemini errors to an internal LLMError with a high-level code used by chat runtime mapping.
       const mappedError = this.mapGeminiError(err);
-      // Logging the mapped code helps operators diagnose why a tenant request returned LLM_UNAVAILABLE in production.
+      // Operational log helps administrators correlate API 503 responses with upstream quota/availability root causes.
       console.error('[LLMService] Gemini request failed', {
         mappedCode: mappedError.code,
         originalMessage: err instanceof Error ? err.message : String(err)
@@ -70,7 +69,7 @@ export class LLMService {
     }
   }
 
-  // trimHistory limits previous turns to reduce prompt size and avoid injecting too much untrusted conversation state.
+  // trimHistory limits prior turns to protect token budget, latency, and prompt-injection surface area.
   private static trimHistory(history: ChatRuntimeHistoryMessage[] | undefined, limit: number): ChatRuntimeHistoryMessage[] {
     if (!history || history.length === 0) {
       return [];
@@ -79,23 +78,26 @@ export class LLMService {
     return history.slice(-Math.max(limit, 0));
   }
 
-  // buildSystemInstruction defines strict tenant-aware behavior: answer only from provided context or admit uncertainty.
+  // buildSystemInstruction sets strict policy: use only context, avoid hallucinations, and answer in English.
+  // Locale is optional, but English remains the default product language for this runtime experience.
   private static buildSystemInstruction(chatbotDisplayName: string, locale?: string): string {
     const localeLine = locale
-      ? `Adapte le ton de la réponse à la locale "${locale}" si possible, sans changer les règles.`
-      : "Réponds en français clair et professionnel.";
+      ? `Prefer responses in locale "${locale}" only when it does not conflict with the strict grounding rules.`
+      : 'Respond in clear professional English.';
 
     return [
-      `Tu es un assistant pour le chatbot "${chatbotDisplayName}".`,
-      'Tu dois répondre UNIQUEMENT en utilisant les informations fournies dans le contexte ci-dessous.',
-      "Si la réponse n'est pas dans ce contexte, tu dis clairement que tu ne sais pas et que tu n'as pas assez d'informations.",
-      "Si la question concerne un autre chatbot ou une autre entreprise, tu réponds que tu n'as pas d'informations à ce sujet.",
-      "Tu ne dois jamais inventer d'informations ou utiliser des connaissances externes.",
+      `You are an assistant for the chatbot "${chatbotDisplayName}".`,
+      'You must answer using ONLY the information provided in the context below.',
+      'If the answer is not present in the context, clearly say that you do not know and do not have enough information.',
+      'If the user asks about another chatbot or another company, say you do not have information about that.',
+      'Never invent facts and never use external knowledge outside the provided context.',
+      'Always keep the response in English.',
       localeLine
     ].join(' ');
   }
 
-  // buildContents converts chat history into Gemini roles and appends the current question with scoped chatbot context.
+  // buildContents maps validated conversation history to Gemini roles and appends the final grounded user question.
+  // Context and question are merged in one final user turn so the model receives tenant scope right before generation.
   private static buildContents(history: ChatRuntimeHistoryMessage[], contextText: string, message: string) {
     const contents = history.map((historyMessage) => ({
       role: historyMessage.role === 'assistant' ? 'model' : 'user',
@@ -103,10 +105,7 @@ export class LLMService {
     }));
 
     const finalUserText =
-      "Voici des informations de contexte pour ce chatbot :\n\n" +
-      contextText +
-      "\n\nQuestion de l'utilisateur :\n" +
-      message;
+      'Here is the tenant chatbot context:\n\n' + contextText + '\n\nCurrent user question:\n' + message;
 
     contents.push({
       role: 'user',
@@ -116,7 +115,7 @@ export class LLMService {
     return contents;
   }
 
-  // mapGeminiError translates SDK/network statuses into stable internal categories used by runtime orchestration.
+  // mapGeminiError translates provider/network status signals into stable internal LLM error categories.
   private static mapGeminiError(err: unknown): LLMError {
     const candidate = err as { status?: number | string; code?: number | string; message?: string };
     const status = String(candidate.status ?? candidate.code ?? '').toUpperCase();

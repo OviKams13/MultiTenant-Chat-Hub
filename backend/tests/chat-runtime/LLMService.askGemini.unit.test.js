@@ -37,17 +37,17 @@ test('LLMService.askGemini should return text answer and include system instruct
   await withMockedModel(
     async (payload) => {
       capturedPayload = payload;
-      return { response: { text: () => 'Réponse test' } };
+      return { response: { text: () => 'Test answer' } };
     },
     async () => {
       const answer = await LLMService.askGemini(createBaseParams());
-      assert.equal(answer, 'Réponse test');
+      assert.equal(answer, 'Test answer');
     }
   );
 
   assert.ok(capturedPayload.systemInstruction.parts[0].text.includes('Chatbot A'));
   assert.equal(typeof capturedPayload.systemInstruction.role, 'undefined');
-  assert.ok(capturedPayload.contents[capturedPayload.contents.length - 1].parts[0].text.includes('Question de l\'utilisateur'));
+  assert.ok(capturedPayload.contents[capturedPayload.contents.length - 1].parts[0].text.includes('Current user question'));
   assert.ok(capturedPayload.contents[capturedPayload.contents.length - 1].parts[0].text.includes('SCHEDULE (entityId=1)'));
 });
 
@@ -61,7 +61,7 @@ test('LLMService.askGemini should trim history to MAX_CHAT_HISTORY_MESSAGES', as
   await withMockedModel(
     async (payload) => {
       capturedPayload = payload;
-      return { response: { text: () => 'Réponse tronquée' } };
+      return { response: { text: () => 'Trimmed response' } };
     },
     async () => {
       await LLMService.askGemini({ ...createBaseParams(), history: longHistory });

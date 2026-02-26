@@ -15,7 +15,7 @@ export const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 
 // Default Gemini model used by the LLMService.
 // Feature 8.7 will consume this model name through geminiClient for real inference calls.
-export const GEMINI_MODEL_NAME = 'gemini-2.0-flash';
+export const GEMINI_MODEL_NAME = 'gemini-2.5-flash';
 
 // Fail fast if GEMINI_API_KEY is not provided.
 // We stop application startup early so production never runs with partially configured LLM infrastructure.

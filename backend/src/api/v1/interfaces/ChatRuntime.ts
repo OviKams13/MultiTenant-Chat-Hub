@@ -3,7 +3,7 @@ import { KnowledgeItem } from './KnowledgeItem';
 // Chat runtime interfaces define the visitor-facing contract shared across validation, controller, and service layers.
 // The public endpoint supports both widget mode (domain) and dashboard mode (chatbotId) in the same payload.
 // History messages are accepted only as user/assistant turns and are never treated as trusted system instructions.
-// Result and source item types are stabilized early so upcoming runtime features can evolve without breaking controllers.
+// Response DTOs in this file keep frontend payloads stable while services evolve internally.
 export type ChatHistoryRole = 'user' | 'assistant';
 
 export interface ChatRuntimeHistoryMessage {
@@ -26,7 +26,7 @@ export interface ChatRuntimeLLMParams {
   locale?: string;
 }
 
-// ChatRuntimeLLMResult is optional today but keeps an explicit shape ready for future metadata fields.
+// ChatRuntimeLLMResult keeps an explicit answer shape ready for future metadata fields (tokens, latency, etc.).
 export interface ChatRuntimeLLMResult {
   answer: string;
 }
@@ -38,11 +38,38 @@ export interface ChatRuntimeInput {
   history?: ChatRuntimeHistoryMessage[];
 }
 
+export type ChatRuntimeSourceEntityType = 'CONTACT' | 'SCHEDULE' | 'DYNAMIC';
+
 export interface ChatRuntimeSourceItem {
   entity_id: number;
-  entity_type: 'CONTACT' | 'SCHEDULE' | 'DYNAMIC';
+  entity_type: ChatRuntimeSourceEntityType;
   tags: string[];
 }
+
+export interface ChatRuntimeSuccessData {
+  answer: string;
+  sourceItems: ChatRuntimeSourceItem[];
+}
+
+export interface ChatRuntimeErrorPayload {
+  code: string;
+  message: string;
+  details?: unknown;
+}
+
+export interface ChatRuntimeResponseSuccess {
+  success: true;
+  data: ChatRuntimeSuccessData;
+  error: null;
+}
+
+export interface ChatRuntimeResponseError {
+  success: false;
+  data: null;
+  error: ChatRuntimeErrorPayload;
+}
+
+export type ChatRuntimeResponse = ChatRuntimeResponseSuccess | ChatRuntimeResponseError;
 
 export interface ChatRuntimeResult {
   answer: string;
