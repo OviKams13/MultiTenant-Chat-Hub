@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import AdminLayout from "@/layouts/AdminLayout";
 import { useAuth } from "@/contexts/AuthContext";
-import { BlockType, DynamicBlockInstance, ScheduleBlock, adminApi } from "@/lib/admin-api";
+import { BlockType, ChatbotItemSummary, DynamicBlockInstance, ScheduleBlock, Tag, adminApi } from "@/lib/admin-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -787,51 +787,113 @@ function DynamicInstanceForm({
 
 function TagsForm({ chatbotId, token, onCancel }: { chatbotId: number; token: string; onCancel: () => void }) {
   const { toast } = useToast();
-  const [tags, setTags] = useState<any[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [items, setItems] = useState<ChatbotItemSummary[]>([]);
   const [tagCode, setTagCode] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
-  const [itemId, setItemId] = useState("");
+  const [synonymsInput, setSynonymsInput] = useState("");
+  const [itemIdInput, setItemIdInput] = useState("");
   const [itemTagCodes, setItemTagCodes] = useState("");
 
   const refresh = async () => {
-    const rows = await adminApi.listTags(token);
-    setTags(rows);
+    const [tagRows, itemRows] = await Promise.all([
+      adminApi.listTags(token),
+      adminApi.listChatbotItems(chatbotId, token)
+    ]);
+    setTags(tagRows);
+    setItems(itemRows);
   };
 
   useEffect(() => {
     refresh().catch(() => undefined);
   }, []);
 
+  const resolveItemId = (rawValue: string): number => {
+    const parsed = Number(rawValue);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      throw new Error("Please enter a valid positive numeric ID.");
+    }
+
+    const asItem = items.find((entry) => entry.item_id === parsed);
+    if (asItem) {
+      return asItem.item_id;
+    }
+
+    const asEntity = items.find((entry) => entry.entity_id === parsed);
+    if (asEntity) {
+      toast({
+        title: "Entity ID detected",
+        description: `Entity #${parsed} maps to item #${asEntity.item_id}. Using item id automatically.`
+      });
+      return asEntity.item_id;
+    }
+
+    throw new Error("ID not found for this chatbot. Use item_id from the list below.");
+  };
+
   const createTag = async () => {
     try {
-      await adminApi.createTag({ tag_code: tagCode, description, category }, token);
+      const synonyms = synonymsInput
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
+
+      await adminApi.createTag(
+        {
+          tag_code: tagCode,
+          description,
+          category,
+          ...(synonyms.length > 0 ? { synonyms } : {})
+        },
+        token
+      );
       toast({ title: "Tag created" });
       setTagCode("");
       setDescription("");
       setCategory("");
+      setSynonymsInput("");
       await refresh();
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unable to create tag";
+      toast({ title: "Error", description: message, variant: "destructive" });
     }
   };
 
   const loadItemTags = async () => {
     try {
-      const rows = await adminApi.getItemTags(chatbotId, Number(itemId), token);
-      setItemTagCodes(rows.map((r) => r.tag_code).join(", "));
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      const resolvedItemId = resolveItemId(itemIdInput);
+      const rows = await adminApi.getItemTags(chatbotId, resolvedItemId, token);
+      setItemIdInput(String(resolvedItemId));
+      setItemTagCodes(rows.map((row) => row.tag_code).join(", "));
+      if (rows.length === 0) {
+        toast({ title: "No tags", description: `Item #${resolvedItemId} has no tags yet.` });
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unable to load item tags";
+      toast({ title: "Error", description: message, variant: "destructive" });
     }
   };
 
   const saveItemTags = async () => {
     try {
-      const codes = itemTagCodes.split(",").map((x) => x.trim()).filter(Boolean);
-      await adminApi.updateItemTags(chatbotId, Number(itemId), { tagCodes: codes }, token);
-      toast({ title: "Item tags updated" });
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      const resolvedItemId = resolveItemId(itemIdInput);
+      const codes = itemTagCodes
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean);
+
+      if (codes.length === 0) {
+        throw new Error("Enter at least one tag code before saving.");
+      }
+
+      await adminApi.updateItemTags(chatbotId, resolvedItemId, { tagCodes: codes }, token);
+      setItemIdInput(String(resolvedItemId));
+      toast({ title: "Item tags updated", description: `Saved ${codes.length} tag(s) on item #${resolvedItemId}.` });
+      await refresh();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unable to save item tags";
+      toast({ title: "Error", description: message, variant: "destructive" });
     }
   };
 
@@ -841,16 +903,39 @@ function TagsForm({ chatbotId, token, onCancel }: { chatbotId: number; token: st
       <CardContent className="space-y-4">
         <div className="space-y-2">
           <Label>Create tag</Label>
-          <Input placeholder="tag_code" value={tagCode} onChange={(e) => setTagCode(e.target.value)} />
+          <Input placeholder="tag_code (e.g. STORE_NAME)" value={tagCode} onChange={(e) => setTagCode(e.target.value)} />
           <Input placeholder="description" value={description} onChange={(e) => setDescription(e.target.value)} />
           <Input placeholder="category" value={category} onChange={(e) => setCategory(e.target.value)} />
+          <Textarea
+            rows={2}
+            placeholder="synonyms separated by commas (e.g. store name, shop name, business name)"
+            value={synonymsInput}
+            onChange={(e) => setSynonymsInput(e.target.value)}
+          />
           <Button size="sm" onClick={createTag}>Create tag</Button>
         </div>
 
         <div>
           <p className="text-sm font-medium mb-1">Existing tags</p>
-          <div className="max-h-28 overflow-auto text-xs border rounded-md p-2">
-            {tags.map((t) => <div key={t.id}>{t.tag_code} ({t.category || "no-category"})</div>)}
+          <div className="max-h-28 overflow-auto text-xs border rounded-md p-2 space-y-1">
+            {tags.map((tag) => (
+              <div key={tag.id}>
+                <span className="font-medium">{tag.tag_code}</span> ({tag.category || "no-category"})
+                {tag.synonyms.length > 0 ? <span className="text-muted-foreground"> — {tag.synonyms.join(", ")}</span> : null}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-sm font-medium mb-1">Chatbot items map (use item_id for tagging)</p>
+          <div className="max-h-28 overflow-auto text-xs border rounded-md p-2 space-y-1">
+            {items.map((item) => (
+              <div key={item.item_id}>
+                item #{item.item_id} → entity #{item.entity_id} ({item.entity_type}
+                {item.type_name ? ` / ${item.type_name}` : ""})
+              </div>
+            ))}
           </div>
         </div>
 
@@ -858,7 +943,11 @@ function TagsForm({ chatbotId, token, onCancel }: { chatbotId: number; token: st
 
         <div className="space-y-2">
           <Label>Item tags by item ID</Label>
-          <Input placeholder="item id" value={itemId} onChange={(e) => setItemId(e.target.value)} />
+          <Input
+            placeholder="item id (or entity id; auto-resolved if unique)"
+            value={itemIdInput}
+            onChange={(e) => setItemIdInput(e.target.value)}
+          />
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={loadItemTags}>Load item tags</Button>
           </div>

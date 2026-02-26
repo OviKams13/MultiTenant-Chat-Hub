@@ -27,3 +27,15 @@ export interface UpdateItemTagsResponseDTO {
   chatbot_id: number;
   tags: ItemTagDTO[];
 }
+
+// ChatbotItemSummaryDTO helps admin UIs map visible entity IDs to internal item IDs used by item-tag routes.
+// entity_type is CONTACT/SCHEDULE for static blocks and DYNAMIC for custom block instances.
+// type_name is populated for dynamic items so admins can quickly spot the right custom block family.
+// This DTO is read-only and does not expose any mutable fields.
+export interface ChatbotItemSummaryDTO {
+  item_id: number;
+  entity_id: number;
+  entity_type: 'CONTACT' | 'SCHEDULE' | 'DYNAMIC';
+  type_id: number | null;
+  type_name: string | null;
+}
