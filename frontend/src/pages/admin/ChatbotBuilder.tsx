@@ -879,6 +879,26 @@ function TagsForm({ chatbotId, token, onCancel }: { chatbotId: number; token: st
     }
   };
 
+
+
+  const deleteTag = async (tag: Tag) => {
+    const confirmed = window.confirm(`Are you sure you want to delete tag "${tag.tag_code}"?`);
+    if (!confirmed) return;
+
+    try {
+      await adminApi.deleteTag(tag.id, token);
+      toast({ title: "Tag deleted" });
+
+      if (editingTagId === tag.id) {
+        resetTagForm();
+      }
+
+      await refresh();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unable to delete tag";
+      toast({ title: "Error", description: message, variant: "destructive" });
+    }
+  };
   const loadItemTags = async () => {
     try {
       const resolvedItemId = resolveItemId(itemIdInput);
@@ -941,16 +961,21 @@ function TagsForm({ chatbotId, token, onCancel }: { chatbotId: number; token: st
           <p className="text-sm font-medium mb-1">Existing tags</p>
           <div className="max-h-56 overflow-auto text-xs border rounded-md p-2 space-y-2">
             {tags.map((tag) => (
-              <div key={tag.id} className="flex items-start gap-2 border rounded-sm p-2">
-                <Button size="sm" variant="outline" onClick={() => startEditTag(tag)}>
-                  Edit
-                </Button>
-                <div>
+              <div key={tag.id} className="flex items-start justify-between gap-3 border rounded-sm p-2">
+                <div className="flex items-start gap-2">
+                  <Button size="sm" variant="outline" onClick={() => startEditTag(tag)}>
+                    Edit
+                  </Button>
                   <div>
-                    <span className="font-medium">{tag.tag_code}</span> ({tag.category || "no-category"})
+                    <div>
+                      <span className="font-medium">{tag.tag_code}</span> ({tag.category || "no-category"})
+                    </div>
+                    {tag.synonyms.length > 0 ? <div className="text-muted-foreground">{tag.synonyms.join(", ")}</div> : null}
                   </div>
-                  {tag.synonyms.length > 0 ? <div className="text-muted-foreground">{tag.synonyms.join(", ")}</div> : null}
                 </div>
+                <Button size="sm" variant="ghost" onClick={() => deleteTag(tag)} aria-label={`Delete tag ${tag.tag_code}`}>
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
               </div>
             ))}
           </div>

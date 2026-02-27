@@ -53,5 +53,20 @@ export const TagController = {
     } catch (error) {
       next(error);
     }
+  },
+
+  async deleteTag(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const tagId = validateUpdateTagPathId(req.params.tagId);
+      await tagService.deleteTag(tagId);
+
+      res.status(200).json({
+        success: true,
+        data: { deleted: true, tag_id: tagId },
+        error: null
+      });
+    } catch (error) {
+      next(error);
+    }
   }
 };

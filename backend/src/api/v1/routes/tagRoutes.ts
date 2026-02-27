@@ -11,5 +11,6 @@ const tagRoutes = Router();
 tagRoutes.get('/', requireAuth, requireRole(['ADMIN']), TagController.getTags);
 tagRoutes.post('/', requireAuth, requireRole(['ADMIN']), TagController.createTag);
 tagRoutes.put('/:tagId', requireAuth, requireRole(['ADMIN']), TagController.updateTag);
+tagRoutes.delete('/:tagId', requireAuth, requireRole(['ADMIN']), TagController.deleteTag);
 
 export default tagRoutes;
