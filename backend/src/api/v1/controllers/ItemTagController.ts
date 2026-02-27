@@ -10,6 +10,20 @@ const itemTagService = new ItemTagService();
 // Authenticated owner context comes from requireAuth middleware and must exist on every call.
 // Responses always follow the standard API envelope used across the whole backend.
 export const ItemTagController = {
+  async listChatbotItems(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const user = (req as Request & { user?: { userId: number } }).user;
+      if (!user) throw new AppError('Unauthorized', 401, 'UNAUTHORIZED');
+
+      const chatbotId = validateItemTagPathId(req.params.chatbotId, 'chatbotId');
+      const items = await itemTagService.listChatbotItems(chatbotId, user.userId);
+
+      res.status(200).json({ success: true, data: items, error: null });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async getItemTags(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const user = (req as Request & { user?: { userId: number } }).user;

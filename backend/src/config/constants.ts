@@ -4,6 +4,10 @@
 // This value can be tuned per deployment once prompt/token budgets are measured in production.
 export const MAX_CONTEXT_ITEMS = 5;
 
+// Runtime chat history limit sent to Gemini to keep prompt size predictable in public chat requests.
+// This protects latency and cost while still preserving enough recent turns for conversational continuity.
+export const MAX_CHAT_HISTORY_MESSAGES = 5;
+
 // Gemini API key loaded from environment variables.
 // This secret must stay backend-only and must never be exposed to frontend bundles.
 // Do not log this value and do not commit .env files to source control.
@@ -11,7 +15,7 @@ export const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 
 // Default Gemini model used by the LLMService.
 // Feature 8.7 will consume this model name through geminiClient for real inference calls.
-export const GEMINI_MODEL_NAME = 'gemini-2.0-flash';
+export const GEMINI_MODEL_NAME = 'gemini-2.5-flash';
 
 // Fail fast if GEMINI_API_KEY is not provided.
 // We stop application startup early so production never runs with partially configured LLM infrastructure.

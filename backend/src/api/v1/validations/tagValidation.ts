@@ -1,5 +1,5 @@
 import { AppError } from '../errors/AppError';
-import { CreateTagPayload, TagFilter } from '../interfaces/Tag';
+import { CreateTagPayload, TagFilter, UpdateTagPayload } from '../interfaces/Tag';
 
 // Tag validation centralizes API input constraints for list and create endpoints.
 // This protects service logic from malformed query/body payloads and keeps controllers minimal.
@@ -22,6 +22,26 @@ function ensureOptionalString(value: unknown, maxLength: number, fieldName: stri
   }
 
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function ensureSynonyms(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    throw new AppError('Validation error', 400, 'VALIDATION_ERROR', {
+      synonyms: 'synonyms must be an array of strings'
+    });
+  }
+
+  const normalized = value.map((entry, index) => {
+    if (typeof entry !== 'string' || entry.trim().length === 0 || entry.trim().length > 100) {
+      throw new AppError('Validation error', 400, 'VALIDATION_ERROR', {
+        synonyms: `synonyms[${index}] must be a non-empty string up to 100 chars`
+      });
+    }
+
+    return entry.trim();
+  });
+
+  return [...new Set(normalized)];
 }
 
 // validateListTagsQuery parses and validates category/is_system/search query parameters.
@@ -56,21 +76,7 @@ export function validateCreateTag(body: Record<string, unknown>): CreateTagPaylo
 
   let synonyms: string[] | undefined;
   if (typeof body.synonyms !== 'undefined') {
-    if (!Array.isArray(body.synonyms)) {
-      throw new AppError('Validation error', 400, 'VALIDATION_ERROR', {
-        synonyms: 'synonyms must be an array of strings'
-      });
-    }
-
-    synonyms = body.synonyms.map((entry, index) => {
-      if (typeof entry !== 'string' || entry.trim().length === 0 || entry.trim().length > 100) {
-        throw new AppError('Validation error', 400, 'VALIDATION_ERROR', {
-          synonyms: `synonyms[${index}] must be a non-empty string up to 100 chars`
-        });
-      }
-
-      return entry.trim();
-    });
+    synonyms = ensureSynonyms(body.synonyms);
   }
 
   return {
@@ -79,4 +85,54 @@ export function validateCreateTag(body: Record<string, unknown>): CreateTagPaylo
     category,
     synonyms
   };
+}
+
+// validateUpdateTagPathId enforces numeric positive ids for tag mutation routes.
+export function validateUpdateTagPathId(raw: string | string[]): number {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const parsed = Number(value);
+
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new AppError('Validation error', 400, 'VALIDATION_ERROR', {
+      tagId: 'tagId must be a positive integer'
+    });
+  }
+
+  return parsed;
+}
+
+// validateUpdateTag validates PATCH/PUT payload for existing tags.
+export function validateUpdateTag(body: Record<string, unknown>): UpdateTagPayload {
+  const payload: UpdateTagPayload = {};
+
+  if (typeof body.tag_code !== 'undefined') {
+    if (typeof body.tag_code !== 'string' || body.tag_code.trim().length === 0 || body.tag_code.trim().length > 50) {
+      throw new AppError('Validation error', 400, 'VALIDATION_ERROR', {
+        tag_code: 'tag_code must be a non-empty string up to 50 characters'
+      });
+    }
+    payload.tag_code = body.tag_code.trim();
+  }
+
+  if (typeof body.description !== 'undefined') {
+    const normalized = ensureOptionalString(body.description, 255, 'description');
+    payload.description = normalized;
+  }
+
+  if (typeof body.category !== 'undefined') {
+    const normalized = ensureOptionalString(body.category, 50, 'category');
+    payload.category = normalized;
+  }
+
+  if (typeof body.synonyms !== 'undefined') {
+    payload.synonyms = ensureSynonyms(body.synonyms);
+  }
+
+  if (Object.keys(payload).length === 0) {
+    throw new AppError('Validation error', 400, 'VALIDATION_ERROR', {
+      body: 'At least one field must be provided'
+    });
+  }
+
+  return payload;
 }

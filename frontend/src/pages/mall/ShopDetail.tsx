@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import MallLayout from "@/layouts/MallLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -11,17 +11,48 @@ import { useAuth } from "@/contexts/AuthContext";
 import { UserChatbotDetail, userApi } from "@/lib/user-api";
 import { useToast } from "@/hooks/use-toast";
 
+// ShopDetail loads one chatbot context for end users and shows static/dynamic data before runtime chat starts.
+// The page now consumes both chatbot id and domain from URL so chat integration can target the right tenant.
+// We keep existing data tabs untouched while wiring the floating widget to the resolved tenant domain.
+// Domain is normalized from URL first, then fallback to backend detail payload for robust routing behavior.
+
+function toReadableLabel(key: string): string {
+  return key
+    .replace(/_/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatValue(value: unknown): string {
+  if (typeof value === "boolean") return value ? "True" : "False";
+  if (value === null || typeof value === "undefined" || value === "") return "—";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
 const ShopDetail = () => {
-  const { id } = useParams<{ id?: string; domain?: string }>();
+  const { id, domain } = useParams<{ id?: string; domain?: string }>();
   const chatbotId = Number(id);
   const { token } = useAuth();
   const { toast } = useToast();
   const [chatbot, setChatbot] = useState<UserChatbotDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // resolvedDomain ensures the widget can call public chat by domain even when URL segment is encoded.
+  const resolvedDomain = useMemo(() => {
+    if (domain) {
+      return decodeURIComponent(domain).trim().toLowerCase();
+    }
+
+    return chatbot?.domain?.trim().toLowerCase() ?? "";
+  }, [domain, chatbot?.domain]);
+
+  // loadChatbotDetail hydrates all UI tabs and keeps the domain available for runtime widget integration.
   useEffect(() => {
     if (!id || Number.isNaN(chatbotId) || !token) return;
-    userApi.getChatbotDetail(chatbotId, token)
+    userApi
+      .getChatbotDetail(chatbotId, token)
       .then(setChatbot)
       .catch((error: Error) => {
         toast({ title: "Failed to load chatbot", description: error.message, variant: "destructive" });
@@ -114,11 +145,11 @@ const ShopDetail = () => {
                       <CardTitle className="text-base">{block.type_name} #{index + 1}</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="grid md:grid-cols-2 gap-3">
+                      <div className="grid gap-3 md:grid-cols-2">
                         {Object.entries(instance).map(([key, value]) => (
-                          <div key={key} className="rounded-md border p-3">
-                            <p className="text-xs uppercase text-muted-foreground mb-1">{key}</p>
-                            <p className="text-sm break-words">{typeof value === "string" ? value : JSON.stringify(value)}</p>
+                          <div key={`${block.type_id}-${index}-${key}`} className="rounded-md border bg-secondary/40 p-3">
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">{toReadableLabel(key)}</p>
+                            <p className="mt-1 text-sm font-medium break-words">{formatValue(value)}</p>
                           </div>
                         ))}
                       </div>
@@ -131,7 +162,8 @@ const ShopDetail = () => {
         ))}
       </Tabs>
 
-      <ChatWidget shopName={chatbot.display_name} />
+      {/* ChatWidget now calls /api/v1/public/chat using domain from URL context so tenant scope follows current page. */}
+      <ChatWidget shopName={chatbot.display_name} domain={resolvedDomain} />
     </MallLayout>
   );
 };

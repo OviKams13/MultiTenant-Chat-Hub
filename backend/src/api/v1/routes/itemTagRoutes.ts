@@ -8,6 +8,7 @@ import { requireAuth, requireRole } from '../middlewares/authMiddleware';
 // requireRole(['ADMIN']) guarantees only owners can mutate semantic tagging configuration.
 const itemTagRoutes = Router();
 
+itemTagRoutes.get('/:chatbotId/items', requireAuth, requireRole(['ADMIN']), ItemTagController.listChatbotItems);
 itemTagRoutes.get('/:chatbotId/items/:itemId/tags', requireAuth, requireRole(['ADMIN']), ItemTagController.getItemTags);
 itemTagRoutes.put('/:chatbotId/items/:itemId/tags', requireAuth, requireRole(['ADMIN']), ItemTagController.updateItemTags);
 

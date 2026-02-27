@@ -1,7 +1,9 @@
-import { Transaction } from 'sequelize';
+import { Op, Transaction } from 'sequelize';
 import { sequelize } from '../../../config/DatabaseConfig';
 import { AppError } from '../errors/AppError';
-import { ItemTagDTO, UpdateItemTagsPayload, UpdateItemTagsResponseDTO } from '../interfaces/ItemTag';
+import { ChatbotItemSummaryDTO, ItemTagDTO, UpdateItemTagsPayload, UpdateItemTagsResponseDTO } from '../interfaces/ItemTag';
+import { BbEntityModel } from '../models/BbEntityModel';
+import { BlockTypeModel } from '../models/BlockTypeModel';
 import { ChatbotItemModel } from '../models/ChatbotItemModel';
 import { ChatbotItemTagModel } from '../models/ChatbotItemTagModel';
 import { ChatbotModel } from '../models/ChatbotModel';
@@ -14,6 +16,57 @@ import { TagService } from './TagService';
 // Tag mapping is normalized into DTOs so controllers stay transport-focused and very thin.
 export class ItemTagService {
   private readonly tagService = new TagService();
+
+  // listChatbotItems exposes a lightweight item/entity map so admins can use the correct item_id in tag routes.
+  async listChatbotItems(chatbotId: number, userId: number): Promise<ChatbotItemSummaryDTO[]> {
+    await this.ensureOwnedChatbot(chatbotId, userId);
+
+    const items = await ChatbotItemModel.findAll({
+      where: { chatbot_id: chatbotId },
+      include: [{ model: BbEntityModel, as: 'entity', required: true }],
+      order: [['item_id', 'ASC']]
+    });
+
+    const typedItems = items as Array<ChatbotItemModel & { entity: BbEntityModel }>;
+    const dynamicTypeIds = [
+      ...new Set(
+        typedItems
+          .map((item) => item.entity?.type_id)
+          .filter((typeId): typeId is number => Number.isInteger(typeId) && Number(typeId) > 0)
+          .map((typeId) => Number(typeId))
+      )
+    ];
+
+    const blockTypes =
+      dynamicTypeIds.length > 0
+        ? await BlockTypeModel.findAll({
+            where: { type_id: { [Op.in]: dynamicTypeIds } },
+            attributes: ['type_id', 'type_name']
+          })
+        : [];
+
+    const typeNameById = new Map<number, string>();
+    for (const blockType of blockTypes) {
+      typeNameById.set(Number(blockType.type_id), blockType.type_name);
+    }
+
+    return typedItems.map((item) => {
+      const entity = item.entity;
+      const typeId = typeof entity.type_id === 'number' ? Number(entity.type_id) : null;
+      const entityType =
+        entity.entity_type === 'CONTACT' || entity.entity_type === 'SCHEDULE'
+          ? entity.entity_type
+          : ('DYNAMIC' as const);
+
+      return {
+        item_id: Number(item.item_id),
+        entity_id: Number(item.entity_id),
+        entity_type: entityType,
+        type_id: typeId,
+        type_name: typeId ? typeNameById.get(typeId) ?? null : null
+      };
+    });
+  }
 
   // getTagsForItem powers the admin builder panel that displays current item semantics.
   async getTagsForItem(chatbotId: number, userId: number, itemId: number): Promise<ItemTagDTO[]> {

@@ -1,6 +1,6 @@
-import { col, fn, Op, where } from 'sequelize';
+import { col, fn, ForeignKeyConstraintError, Op, where } from 'sequelize';
 import { AppError } from '../errors/AppError';
-import { CreateTagPayload, TagDTO, TagFilter, TagResolutionMap } from '../interfaces/Tag';
+import { CreateTagPayload, TagDTO, TagFilter, TagResolutionMap, UpdateTagPayload } from '../interfaces/Tag';
 import { TagModel } from '../models/TagModel';
 
 // TagService centralizes tag business logic shared by static blocks, dynamic blocks, admin APIs, and runtime chat.
@@ -136,6 +136,64 @@ export class TagService {
     return this.toDTO(created);
   }
 
+
+  // updateTag allows admins to refine existing tag semantics (code/category/description/synonyms).
+  // tag_code remains globally unique and is normalized to uppercase before persistence.
+  async updateTag(tagId: number, payload: UpdateTagPayload): Promise<TagDTO> {
+    const tag = await TagModel.findByPk(tagId);
+    if (!tag) {
+      throw new AppError('Tag not found', 404, 'TAG_NOT_FOUND');
+    }
+
+    if (typeof payload.tag_code !== 'undefined') {
+      const normalizedCode = payload.tag_code.trim().toUpperCase();
+
+      const existing = await TagModel.findOne({
+        where: where(fn('UPPER', col('tag_code')), normalizedCode)
+      });
+
+      if (existing && Number(existing.tag_id) !== Number(tag.tag_id)) {
+        throw new AppError('Tag code already exists', 409, 'TAG_CODE_ALREADY_EXISTS');
+      }
+
+      tag.tag_code = normalizedCode;
+    }
+
+    if (typeof payload.description !== 'undefined') {
+      tag.description = payload.description?.trim() || null;
+    }
+
+    if (typeof payload.category !== 'undefined') {
+      tag.category = payload.category?.trim() || null;
+    }
+
+    if (typeof payload.synonyms !== 'undefined') {
+      tag.synonyms_json = payload.synonyms.length > 0 ? payload.synonyms : null;
+    }
+
+    await tag.save();
+    return this.toDTO(tag);
+  }
+
+
+  // deleteTag removes a tag that is no longer needed by admin taxonomy management.
+  // If the tag is still linked to chatbot_item_tags, we return TAG_IN_USE so UI can guide cleanup first.
+  async deleteTag(tagId: number): Promise<void> {
+    const tag = await TagModel.findByPk(tagId);
+    if (!tag) {
+      throw new AppError('Tag not found', 404, 'TAG_NOT_FOUND');
+    }
+
+    try {
+      await tag.destroy();
+    } catch (error: unknown) {
+      if (error instanceof ForeignKeyConstraintError) {
+        throw new AppError('Tag is linked to one or more items and cannot be deleted', 409, 'TAG_IN_USE');
+      }
+
+      throw error;
+    }
+  }
   // toDTO normalizes DB rows into API response shape with synonyms always exposed as a string array.
   private toDTO(tag: TagModel): TagDTO {
     const synonyms = Array.isArray(tag.synonyms_json) ? tag.synonyms_json : [];

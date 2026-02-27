@@ -1,5 +1,5 @@
 import { Op } from 'sequelize';
-import { MAX_CONTEXT_ITEMS } from '../../../config/constants';
+import { MAX_CHAT_HISTORY_MESSAGES, MAX_CONTEXT_ITEMS } from '../../../config/constants';
 import { AppError } from '../errors/AppError';
 import { ChatRuntimeInput, ChatRuntimeResult } from '../interfaces/ChatRuntime';
 import { KnowledgeItem, KnowledgeItemKind } from '../interfaces/KnowledgeItem';
@@ -11,6 +11,7 @@ import { ChatbotItemModel } from '../models/ChatbotItemModel';
 import { ChatbotItemTagModel } from '../models/ChatbotItemTagModel';
 import { ChatbotModel } from '../models/ChatbotModel';
 import { TagModel } from '../models/TagModel';
+import { LLMError, LLMService } from './LLMService';
 import { TagService } from './TagService';
 
 interface ResolvedChatbotContext {
@@ -26,7 +27,7 @@ interface RawItemRef {
 // ChatRuntimeService owns public-chat orchestration and keeps HTTP/controller layers business-agnostic.
 // Feature 8.5 added tenant-scoped batch retrieval to build KnowledgeItem[] without N+1 queries.
 // Feature 8.6 adds deterministic ranking + trimming so context stays inside LLM window budgets.
-// Final LLM response generation is still deferred to Feature 8.7; this service prepares selected context now.
+// Feature 8.7 completes this flow by delegating final answer generation to LLMService with Gemini.
 export class ChatRuntimeService {
   // chat resolves tenant scope, classifies user intent, fetches knowledge, selects context, and returns source attribution.
   static async chat(input: ChatRuntimeInput): Promise<ChatRuntimeResult> {
@@ -41,17 +42,37 @@ export class ChatRuntimeService {
     const selectedItems = this.selectContextItems(knowledgeItems);
     const contextText = this.buildContextText(selectedItems);
 
-    // contextText will be passed to LLMService.askGemini in Feature 8.7 with message/history/chatbot metadata.
-    // Placeholder answer is kept for now while proving selectedItems/sourceItems are context-window safe.
-    void contextText;
-    return {
-      answer: `Chat runtime pipeline not fully implemented yet for ${displayName} (chatbot ${chatbotId}).`,
-      sourceItems: selectedItems.map((item) => ({
-        entity_id: item.entityId,
-        entity_type: item.kind,
-        tags: queryTags
-      }))
-    };
+    try {
+      const answer = await LLMService.askGemini({
+        chatbotDisplayName: displayName || input.domain || 'Chatbot',
+        message: input.message,
+        history: input.history,
+        contextText,
+        maxHistoryMessages: MAX_CHAT_HISTORY_MESSAGES,
+        // English runtime locale keeps chatbot answers aligned with the current product language requirement.
+        locale: 'en'
+      });
+
+      return {
+        answer,
+        sourceItems: selectedItems.map((item) => ({
+          entity_id: item.entityId,
+          entity_type: item.kind,
+          tags: queryTags
+        }))
+      };
+    } catch (err: unknown) {
+      // ChatRuntimeService maps low-level LLMError to a domain-level LLM_UNAVAILABLE error.
+      if (err instanceof LLMError) {
+        throw new AppError(
+          'The answer generation service is temporarily unavailable.',
+          503,
+          'LLM_UNAVAILABLE'
+        );
+      }
+
+      throw err;
+    }
   }
 
   // handleChat remains as compatibility alias while existing callers migrate to chat(...).
@@ -273,9 +294,9 @@ export class ChatRuntimeService {
     return sortedItems.slice(0, MAX_CONTEXT_ITEMS);
   }
 
-  // buildContextText converts selected items into deterministic plain text consumed by future LLM prompts.
-  // The output mirrors selectedItems order so source attribution and prompt context stay aligned.
-  // Each section is prefixed by kind labels to reduce ambiguity when Gemini receives mixed data types.
+  // buildContextText converts selected items into deterministic plain text consumed by Gemini prompts.
+  // selectedItems are already tenant-scoped from resolveChatbot, so this context never leaks other chatbot/company data.
+  // If a user asks about another chatbot, those records are absent here and systemInstruction forces an explicit unknown answer.
   private static buildContextText(selectedItems: KnowledgeItem[]): string {
     const lines: string[] = ['Chatbot knowledge context:'];
 

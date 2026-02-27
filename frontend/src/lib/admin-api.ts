@@ -64,6 +64,14 @@ export interface ItemTagUpdateResult {
   tags: Tag[];
 }
 
+export interface ChatbotItemSummary {
+  item_id: number;
+  entity_id: number;
+  entity_type: "CONTACT" | "SCHEDULE" | "DYNAMIC";
+  type_id: number | null;
+  type_name: string | null;
+}
+
 export const adminApi = {
   listChatbots: (token: string) => apiClient.get<Chatbot[]>("/chatbots", token),
   getChatbot: (id: number, token: string) => apiClient.get<Chatbot>(`/chatbots/${id}`, token),
@@ -127,7 +135,15 @@ export const adminApi = {
     payload: { tag_code: string; description?: string; category?: string; synonyms?: string[] },
     token: string
   ) => apiClient.post<Tag>("/tags", payload, token),
+  updateTag: (
+    tagId: number,
+    payload: { tag_code?: string; description?: string; category?: string; synonyms?: string[] },
+    token: string
+  ) => apiClient.put<Tag>(`/tags/${tagId}`, payload, token),
+  deleteTag: (tagId: number, token: string) => apiClient.delete(`/tags/${tagId}`, token),
 
+  listChatbotItems: (chatbotId: number, token: string) =>
+    apiClient.get<ChatbotItemSummary[]>(`/chatbots/${chatbotId}/items`, token),
   getItemTags: (chatbotId: number, itemId: number, token: string) =>
     apiClient.get<Tag[]>(`/chatbots/${chatbotId}/items/${itemId}/tags`, token),
   updateItemTags: (

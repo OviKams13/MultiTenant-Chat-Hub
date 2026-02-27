@@ -41,7 +41,34 @@ export interface UserChatbotDetail {
   }>;
 }
 
+export interface PublicChatHistoryMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface PublicChatRequest {
+  domain: string;
+  message: string;
+  history?: PublicChatHistoryMessage[];
+}
+
+export interface PublicChatSourceItem {
+  entity_id: number;
+  entity_type: "CONTACT" | "SCHEDULE" | "DYNAMIC";
+  tags: string[];
+}
+
+export interface PublicChatResponseData {
+  answer: string;
+  sourceItems: PublicChatSourceItem[];
+}
+
+// userApi centralizes user-dashboard calls so the UI can consume one typed gateway instead of raw fetch calls.
+// listOwnersWithChatbots drives the grouped admin/chatbot cards shown on the mall dashboard screen.
+// getChatbotDetail hydrates the detail page tabs (contact, schedules, dynamic blocks) before opening the chat widget.
+// chatByDomain powers the public runtime chat integration using URL domain context for tenant-safe responses.
 export const userApi = {
   listOwnersWithChatbots: (token: string) => apiClient.get<OwnerChatbotsGroup[]>("/users/chatbots", token),
-  getChatbotDetail: (chatbotId: number, token: string) => apiClient.get<UserChatbotDetail>(`/users/chatbots/${chatbotId}`, token)
+  getChatbotDetail: (chatbotId: number, token: string) => apiClient.get<UserChatbotDetail>(`/users/chatbots/${chatbotId}`, token),
+  chatByDomain: (payload: PublicChatRequest) => apiClient.post<PublicChatResponseData>("/public/chat", payload)
 };
