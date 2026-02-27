@@ -26,6 +26,16 @@ export interface CreateTagPayload {
   synonyms?: string[];
 }
 
+// UpdateTagPayload models validated input for updating an existing tag definition.
+// Updates are partial but every provided field must pass strict validation.
+// tag_code remains globally unique and is normalized to uppercase when provided.
+export interface UpdateTagPayload {
+  tag_code?: string;
+  description?: string;
+  category?: string;
+  synonyms?: string[];
+}
+
 // TagResolutionMap maps normalized tag codes to numeric tag identifiers in persistence layer.
 export type TagResolutionMap = Map<string, number>;
 

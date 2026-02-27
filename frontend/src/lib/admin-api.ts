@@ -135,6 +135,11 @@ export const adminApi = {
     payload: { tag_code: string; description?: string; category?: string; synonyms?: string[] },
     token: string
   ) => apiClient.post<Tag>("/tags", payload, token),
+  updateTag: (
+    tagId: number,
+    payload: { tag_code?: string; description?: string; category?: string; synonyms?: string[] },
+    token: string
+  ) => apiClient.put<Tag>(`/tags/${tagId}`, payload, token),
 
   listChatbotItems: (chatbotId: number, token: string) =>
     apiClient.get<ChatbotItemSummary[]>(`/chatbots/${chatbotId}/items`, token),

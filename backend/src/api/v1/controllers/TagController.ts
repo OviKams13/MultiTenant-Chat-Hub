@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from 'express';
 import { TagService } from '../services/TagService';
-import { validateCreateTag, validateListTagsQuery } from '../validations/tagValidation';
+import { validateCreateTag, validateListTagsQuery, validateUpdateTag, validateUpdateTagPathId } from '../validations/tagValidation';
 
 const tagService = new TagService();
 
@@ -32,6 +32,22 @@ export const TagController = {
       res.status(201).json({
         success: true,
         data: createdTag,
+        error: null
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async updateTag(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const tagId = validateUpdateTagPathId(req.params.tagId);
+      const payload = validateUpdateTag(req.body as Record<string, unknown>);
+      const updatedTag = await tagService.updateTag(tagId, payload);
+
+      res.status(200).json({
+        success: true,
+        data: updatedTag,
         error: null
       });
     } catch (error) {

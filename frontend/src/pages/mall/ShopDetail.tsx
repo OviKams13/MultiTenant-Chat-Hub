@@ -15,6 +15,22 @@ import { useToast } from "@/hooks/use-toast";
 // The page now consumes both chatbot id and domain from URL so chat integration can target the right tenant.
 // We keep existing data tabs untouched while wiring the floating widget to the resolved tenant domain.
 // Domain is normalized from URL first, then fallback to backend detail payload for robust routing behavior.
+
+function toReadableLabel(key: string): string {
+  return key
+    .replace(/_/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatValue(value: unknown): string {
+  if (typeof value === "boolean") return value ? "True" : "False";
+  if (value === null || typeof value === "undefined" || value === "") return "—";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
 const ShopDetail = () => {
   const { id, domain } = useParams<{ id?: string; domain?: string }>();
   const chatbotId = Number(id);
@@ -129,7 +145,14 @@ const ShopDetail = () => {
                       <CardTitle className="text-base">{block.type_name} #{index + 1}</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <pre className="text-xs bg-secondary rounded p-3 overflow-auto">{JSON.stringify(instance, null, 2)}</pre>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {Object.entries(instance).map(([key, value]) => (
+                          <div key={`${block.type_id}-${index}-${key}`} className="rounded-md border bg-secondary/40 p-3">
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">{toReadableLabel(key)}</p>
+                            <p className="mt-1 text-sm font-medium break-words">{formatValue(value)}</p>
+                          </div>
+                        ))}
+                      </div>
                     </CardContent>
                   </Card>
                 ))}

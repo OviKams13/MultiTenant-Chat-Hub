@@ -789,12 +789,21 @@ function TagsForm({ chatbotId, token, onCancel }: { chatbotId: number; token: st
   const { toast } = useToast();
   const [tags, setTags] = useState<Tag[]>([]);
   const [items, setItems] = useState<ChatbotItemSummary[]>([]);
+  const [editingTagId, setEditingTagId] = useState<number | null>(null);
   const [tagCode, setTagCode] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
   const [synonymsInput, setSynonymsInput] = useState("");
   const [itemIdInput, setItemIdInput] = useState("");
   const [itemTagCodes, setItemTagCodes] = useState("");
+
+  const resetTagForm = () => {
+    setEditingTagId(null);
+    setTagCode("");
+    setDescription("");
+    setCategory("");
+    setSynonymsInput("");
+  };
 
   const refresh = async () => {
     const [tagRows, itemRows] = await Promise.all([
@@ -829,33 +838,43 @@ function TagsForm({ chatbotId, token, onCancel }: { chatbotId: number; token: st
       return asEntity.item_id;
     }
 
-    throw new Error("ID not found for this chatbot. Use item_id from the list below.");
+    throw new Error("ID not found for this chatbot. Use a valid item_id or entity_id.");
   };
 
-  const createTag = async () => {
+  const startEditTag = (tag: Tag) => {
+    setEditingTagId(tag.id);
+    setTagCode(tag.tag_code);
+    setDescription(tag.description ?? "");
+    setCategory(tag.category ?? "");
+    setSynonymsInput(tag.synonyms.join(", "));
+  };
+
+  const upsertTag = async () => {
     try {
       const synonyms = synonymsInput
         .split(",")
         .map((value) => value.trim())
         .filter(Boolean);
 
-      await adminApi.createTag(
-        {
-          tag_code: tagCode,
-          description,
-          category,
-          ...(synonyms.length > 0 ? { synonyms } : {})
-        },
-        token
-      );
-      toast({ title: "Tag created" });
-      setTagCode("");
-      setDescription("");
-      setCategory("");
-      setSynonymsInput("");
+      const payload = {
+        tag_code: tagCode,
+        description,
+        category,
+        ...(synonyms.length > 0 ? { synonyms } : {})
+      };
+
+      if (editingTagId) {
+        await adminApi.updateTag(editingTagId, payload, token);
+        toast({ title: "Tag updated" });
+      } else {
+        await adminApi.createTag(payload, token);
+        toast({ title: "Tag created" });
+      }
+
+      resetTagForm();
       await refresh();
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Unable to create tag";
+      const message = error instanceof Error ? error.message : "Unable to save tag";
       toast({ title: "Error", description: message, variant: "destructive" });
     }
   };
@@ -902,7 +921,7 @@ function TagsForm({ chatbotId, token, onCancel }: { chatbotId: number; token: st
       <CardHeader><CardTitle className="text-base">Tags & Item tags</CardTitle></CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <Label>Create tag</Label>
+          <Label>{editingTagId ? "Edit tag" : "Create tag"}</Label>
           <Input placeholder="tag_code (e.g. STORE_NAME)" value={tagCode} onChange={(e) => setTagCode(e.target.value)} />
           <Input placeholder="description" value={description} onChange={(e) => setDescription(e.target.value)} />
           <Input placeholder="category" value={category} onChange={(e) => setCategory(e.target.value)} />
@@ -912,28 +931,26 @@ function TagsForm({ chatbotId, token, onCancel }: { chatbotId: number; token: st
             value={synonymsInput}
             onChange={(e) => setSynonymsInput(e.target.value)}
           />
-          <Button size="sm" onClick={createTag}>Create tag</Button>
-        </div>
-
-        <div>
-          <p className="text-sm font-medium mb-1">Existing tags</p>
-          <div className="max-h-28 overflow-auto text-xs border rounded-md p-2 space-y-1">
-            {tags.map((tag) => (
-              <div key={tag.id}>
-                <span className="font-medium">{tag.tag_code}</span> ({tag.category || "no-category"})
-                {tag.synonyms.length > 0 ? <span className="text-muted-foreground"> — {tag.synonyms.join(", ")}</span> : null}
-              </div>
-            ))}
+          <div className="flex gap-2">
+            <Button size="sm" onClick={upsertTag}>{editingTagId ? "Edit tag" : "Create tag"}</Button>
+            {editingTagId ? <Button size="sm" variant="outline" onClick={resetTagForm}>Cancel edit</Button> : null}
           </div>
         </div>
 
         <div>
-          <p className="text-sm font-medium mb-1">Chatbot items map (use item_id for tagging)</p>
-          <div className="max-h-28 overflow-auto text-xs border rounded-md p-2 space-y-1">
-            {items.map((item) => (
-              <div key={item.item_id}>
-                item #{item.item_id} → entity #{item.entity_id} ({item.entity_type}
-                {item.type_name ? ` / ${item.type_name}` : ""})
+          <p className="text-sm font-medium mb-1">Existing tags</p>
+          <div className="max-h-56 overflow-auto text-xs border rounded-md p-2 space-y-2">
+            {tags.map((tag) => (
+              <div key={tag.id} className="flex items-start gap-2 border rounded-sm p-2">
+                <Button size="sm" variant="outline" onClick={() => startEditTag(tag)}>
+                  Edit
+                </Button>
+                <div>
+                  <div>
+                    <span className="font-medium">{tag.tag_code}</span> ({tag.category || "no-category"})
+                  </div>
+                  {tag.synonyms.length > 0 ? <div className="text-muted-foreground">{tag.synonyms.join(", ")}</div> : null}
+                </div>
               </div>
             ))}
           </div>
