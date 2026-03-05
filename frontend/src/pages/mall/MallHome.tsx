@@ -3,7 +3,7 @@ import MallLayout from "@/layouts/MallLayout";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Store, ArrowRight, User } from "lucide-react";
+
 import { useAuth } from "@/contexts/AuthContext";
 import { OwnerChatbotsGroup, userApi } from "@/lib/user-api";
 import { useToast } from "@/hooks/use-toast";
@@ -56,16 +56,15 @@ const MallHome = () => {
         </div>
       ) : filteredGroups.length === 0 ? (
         <div className="text-center py-16">
-          <Store className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
           <h3 className="text-lg font-semibold">No chatbots found</h3>
           <p className="text-muted-foreground">Try a different search term</p>
         </div>
       ) : (
         <div className="space-y-5">
           {filteredGroups.map((group) => (
-            <Card key={group.owner_id} className="shadow-card">
+            <Card key={group.owner_id}>
               <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2"><User className="h-4 w-4" /> Admin: {group.owner_email}</CardTitle>
+                <CardTitle className="text-lg">Admin: {group.owner_email}</CardTitle>
                 <CardDescription>{group.chatbots.length} chatbot(s)</CardDescription>
               </CardHeader>
               <CardContent>
@@ -77,8 +76,8 @@ const MallHome = () => {
                         <CardDescription className="font-mono text-xs">{chatbot.domain}</CardDescription>
                       </CardHeader>
                       <CardContent>
-                        <Button asChild variant="outline" className="w-full gap-2">
-                          <Link to={`/mall/chatbots/${chatbot.id}/${encodeURIComponent(chatbot.domain)}`}>Open chatbot <ArrowRight className="h-4 w-4" /></Link>
+                        <Button asChild variant="outline" className="w-full">
+                          <Link to={`/mall/chatbots/${chatbot.id}/${encodeURIComponent(chatbot.domain)}`}>Open chatbot</Link>
                         </Button>
                       </CardContent>
                     </Card>

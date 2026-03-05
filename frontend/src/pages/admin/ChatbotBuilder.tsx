@@ -10,7 +10,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { Clock, Pencil, Plus, Tags, Trash2, Type } from "lucide-react";
 
 type BuilderDropType = "CONTACT" | "SCHEDULE" | "DYNAMIC_INSTANCE";
 
@@ -316,7 +315,7 @@ const ChatbotBuilder = () => {
                   key={item.type}
                   draggable
                   onDragStart={(e) => e.dataTransfer.setData("builder-drop-type", item.type)}
-                  className="rounded-md border bg-muted/30 p-3 text-sm font-medium cursor-grab"
+                  className="border border bg-muted/30 p-3 text-sm font-medium cursor-grab"
                 >
                   {item.label}
                 </div>
@@ -332,7 +331,7 @@ const ChatbotBuilder = () => {
           <Card>
             <CardHeader><CardTitle className="text-base">Static blocks</CardTitle></CardHeader>
             <CardContent className="space-y-3">
-              <div className="rounded-md border p-3 text-sm">
+              <div className="border border p-3 text-sm">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-medium">Contact</p>
@@ -347,18 +346,18 @@ const ChatbotBuilder = () => {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <p className="font-medium text-sm">Schedules</p>
-                  <Button size="sm" variant="outline" onClick={() => setMode({ type: "SCHEDULE" })}><Plus className="h-3 w-3 mr-1" /> Add</Button>
+                  <Button size="sm" variant="outline" onClick={() => setMode({ type: "SCHEDULE" })}>Add</Button>
                 </div>
                 {schedules.length === 0 ? (
                   <p className="text-xs text-muted-foreground">No schedules yet</p>
                 ) : (
                   schedules.map((s) => (
-                    <div key={s.entity_id} className="rounded-md border p-3 mb-2 text-sm">
+                    <div key={s.entity_id} className="border border p-3 mb-2 text-sm">
                       <p className="font-medium">{s.title}</p>
                       <p className="text-muted-foreground">{s.day_of_week}: {s.open_time} - {s.close_time}</p>
                       <div className="flex gap-1 mt-2">
-                        <Button size="sm" variant="ghost" onClick={() => setMode({ type: "SCHEDULE", data: s })}><Pencil className="h-3 w-3" /></Button>
-                        <Button size="sm" variant="ghost" onClick={() => deleteSchedule(s.entity_id)}><Trash2 className="h-3 w-3 text-destructive" /></Button>
+                        <Button size="sm" variant="ghost" onClick={() => setMode({ type: "SCHEDULE", data: s })}>Edit</Button>
+                        <Button size="sm" variant="ghost" onClick={() => deleteSchedule(s.entity_id)}>Delete</Button>
                       </div>
                     </div>
                   ))
@@ -369,23 +368,23 @@ const ChatbotBuilder = () => {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2"><Type className="h-4 w-4" /> Custom blocks</CardTitle>
+              <CardTitle className="text-base">Custom blocks</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {blockTypes.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No block types available.</p>
               ) : (
                 blockTypes.map((type) => (
-                  <div key={type.type_id} className="rounded-md border p-3 text-sm">
+                  <div key={type.type_id} className="border border p-3 text-sm">
                     <div className="flex justify-between items-center gap-2">
                       <div>
                         <p className="font-medium">{type.type_name} {type.is_system ? "(system)" : ""}</p>
                         <p className="text-muted-foreground">Scope: {type.scope}</p>
                       </div>
                       <div className="flex gap-1">
-                        <Button size="sm" variant="ghost" onClick={() => editType(type.type_id)}><Pencil className="h-3 w-3" /></Button>
+                        <Button size="sm" variant="ghost" onClick={() => editType(type.type_id)}>Edit</Button>
                         {!type.is_system && type.scope === "CHATBOT" && (
-                          <Button size="sm" variant="ghost" onClick={() => deleteType(type.type_id)}><Trash2 className="h-3 w-3 text-destructive" /></Button>
+                          <Button size="sm" variant="ghost" onClick={() => deleteType(type.type_id)}>Delete</Button>
                         )}
                       </div>
                     </div>
@@ -393,7 +392,7 @@ const ChatbotBuilder = () => {
                       <Button size="sm" variant="outline" onClick={() => setMode({ type: "INSTANCE", blockType: type })}>Add block data</Button>
                     </div>
                     {(instancesByType[type.type_id] ?? []).map((instance) => (
-                      <div key={instance.entity_id} className="rounded-md border mt-2 p-2">
+                      <div key={instance.entity_id} className="border border mt-2 p-2">
                         <p className="text-xs font-medium">Entity #{instance.entity_id}</p>
                         <div className="mt-2 space-y-1 text-xs">
                           {parseSchemaFields(type.schema_definition).length > 0 ? (
@@ -408,8 +407,8 @@ const ChatbotBuilder = () => {
                           )}
                         </div>
                         <div className="flex gap-1 mt-1">
-                          <Button size="sm" variant="ghost" onClick={() => editInstance(type, instance.entity_id)}><Pencil className="h-3 w-3" /></Button>
-                          <Button size="sm" variant="ghost" onClick={() => deleteInstance(type.type_id, instance.entity_id)}><Trash2 className="h-3 w-3 text-destructive" /></Button>
+                          <Button size="sm" variant="ghost" onClick={() => editInstance(type, instance.entity_id)}>Edit</Button>
+                          <Button size="sm" variant="ghost" onClick={() => deleteInstance(type.type_id, instance.entity_id)}>Delete</Button>
                         </div>
                       </div>
                     ))}
@@ -421,7 +420,7 @@ const ChatbotBuilder = () => {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2"><Tags className="h-4 w-4" /> Tags & Item tags routes</CardTitle>
+              <CardTitle className="text-base">Tags & Item tags routes</CardTitle>
             </CardHeader>
             <CardContent>
               <Button size="sm" variant="outline" onClick={() => setMode({ type: "TAGS" })}>Manage tags / item tags</Button>
@@ -547,7 +546,7 @@ function ScheduleForm({
         <div><Label>Title</Label><Input value={form.title} onChange={set("title")} placeholder="Weekday hours" /></div>
         <div>
           <Label>Day of week</Label>
-          <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={form.day_of_week} onChange={set("day_of_week") as any}>
+          <select className="flex h-10 w-full border border border-input bg-background px-3 py-2 text-sm" value={form.day_of_week} onChange={set("day_of_week") as any}>
             {days.map((d) => <option key={d} value={d}>{d}</option>)}
           </select>
         </div>
@@ -626,11 +625,11 @@ function BlockTypeForm({
         <div>
           <div className="flex items-center justify-between mb-2">
             <Label>Schema fields</Label>
-            <Button type="button" size="sm" variant="outline" onClick={addField}><Plus className="h-3 w-3 mr-1" /> Add field</Button>
+            <Button type="button" size="sm" variant="outline" onClick={addField}>Add field</Button>
           </div>
           <div className="space-y-2">
             {fields.map((field, index) => (
-              <div key={`${index}-${field.name}`} className="rounded-md border p-2 space-y-2">
+              <div key={`${index}-${field.name}`} className="border border p-2 space-y-2">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div>
                     <Label>Name</Label>
@@ -646,7 +645,7 @@ function BlockTypeForm({
                   <div>
                     <Label>Type</Label>
                     <select
-                      className="w-full h-9 rounded-md border bg-background px-3 text-sm"
+                      className="w-full h-9 border border bg-background px-3 text-sm"
                       value={field.type}
                       onChange={(e) => updateField(index, "type", e.target.value as DynamicFieldType)}
                     >
@@ -660,7 +659,7 @@ function BlockTypeForm({
                   <div>
                     <Label>Required</Label>
                     <select
-                      className="w-full h-9 rounded-md border bg-background px-3 text-sm"
+                      className="w-full h-9 border border bg-background px-3 text-sm"
                       value={field.required ? "true" : "false"}
                       onChange={(e) => updateField(index, "required", e.target.value === "true")}
                     >
@@ -670,7 +669,7 @@ function BlockTypeForm({
                   </div>
                   <div className="flex items-end">
                     <Button type="button" size="sm" variant="ghost" onClick={() => removeField(index)} disabled={fields.length === 1}>
-                      <Trash2 className="h-3 w-3 text-destructive" />
+                      Delete
                     </Button>
                   </div>
                 </div>
@@ -748,7 +747,7 @@ function DynamicInstanceForm({
               <Label>{field.label} ({field.name}) {field.required ? "*" : ""}</Label>
               {field.type === "select" ? (
                 <select
-                  className="w-full h-9 rounded-md border bg-background px-3 text-sm"
+                  className="w-full h-9 border border bg-background px-3 text-sm"
                   value={String(formData[field.name] ?? "")}
                   onChange={(e) => updateFieldValue(field, e.target.value)}
                 >
@@ -759,7 +758,7 @@ function DynamicInstanceForm({
                 </select>
               ) : field.type === "boolean" ? (
                 <select
-                  className="w-full h-9 rounded-md border bg-background px-3 text-sm"
+                  className="w-full h-9 border border bg-background px-3 text-sm"
                   value={String(formData[field.name] ?? "false")}
                   onChange={(e) => updateFieldValue(field, e.target.value)}
                 >
@@ -959,7 +958,7 @@ function TagsForm({ chatbotId, token, onCancel }: { chatbotId: number; token: st
 
         <div>
           <p className="text-sm font-medium mb-1">Existing tags</p>
-          <div className="max-h-56 overflow-auto text-xs border rounded-md p-2 space-y-2">
+          <div className="max-h-56 overflow-auto text-xs border border p-2 space-y-2">
             {tags.map((tag) => (
               <div key={tag.id} className="flex items-start justify-between gap-3 border rounded-sm p-2">
                 <div className="flex items-start gap-2">
@@ -974,7 +973,7 @@ function TagsForm({ chatbotId, token, onCancel }: { chatbotId: number; token: st
                   </div>
                 </div>
                 <Button size="sm" variant="ghost" onClick={() => deleteTag(tag)} aria-label={`Delete tag ${tag.tag_code}`}>
-                  <Trash2 className="h-4 w-4 text-destructive" />
+                  Delete
                 </Button>
               </div>
             ))}

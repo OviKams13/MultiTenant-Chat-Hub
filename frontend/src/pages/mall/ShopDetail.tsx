@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Phone, Mail, MapPin } from "lucide-react";
+
 import ChatWidget from "@/components/ChatWidget";
 import { useAuth } from "@/contexts/AuthContext";
 import { UserChatbotDetail, userApi } from "@/lib/user-api";
@@ -66,8 +66,8 @@ const ShopDetail = () => {
   return (
     <MallLayout>
       <div className="mb-6">
-        <Button variant="ghost" size="sm" asChild className="mb-2 gap-1">
-          <Link to="/mall"><ArrowLeft className="h-4 w-4" /> Back to dashboard</Link>
+        <Button variant="ghost" size="sm" asChild className="mb-2">
+          <Link to="/mall">Back to dashboard</Link>
         </Button>
         <h1 className="text-3xl font-bold">{chatbot.display_name}</h1>
         <p className="text-sm text-muted-foreground">Domain: {chatbot.domain}</p>
@@ -88,15 +88,15 @@ const ShopDetail = () => {
           {!chatbot.contact ? (
             <Card><CardContent className="py-8 text-center text-muted-foreground">No contact info available</CardContent></Card>
           ) : (
-            <Card className="shadow-card">
+            <Card>
               <CardHeader><CardTitle>{chatbot.contact.org_name || chatbot.display_name}</CardTitle></CardHeader>
               <CardContent className="space-y-3">
-                {chatbot.contact.phone && <p className="flex items-center gap-2 text-sm"><Phone className="h-4 w-4 text-primary" /> {chatbot.contact.phone}</p>}
-                {chatbot.contact.email && <p className="flex items-center gap-2 text-sm"><Mail className="h-4 w-4 text-primary" /> <a href={`mailto:${chatbot.contact.email}`} className="underline">{chatbot.contact.email}</a></p>}
+                {chatbot.contact.phone && <p className="text-sm">Phone: {chatbot.contact.phone}</p>}
+                {chatbot.contact.email && <p className="text-sm">Email: <a href={`mailto:${chatbot.contact.email}`} className="underline">{chatbot.contact.email}</a></p>}
                 {(chatbot.contact.address_text || chatbot.contact.city || chatbot.contact.country) && (
-                  <p className="flex items-center gap-2 text-sm"><MapPin className="h-4 w-4 text-primary" /> {[chatbot.contact.address_text, chatbot.contact.city, chatbot.contact.country].filter(Boolean).join(", ")}</p>
+                  <p className="text-sm">Address: {[chatbot.contact.address_text, chatbot.contact.city, chatbot.contact.country].filter(Boolean).join(", ")}</p>
                 )}
-                {chatbot.contact.hours_text && <div className="rounded-md bg-secondary p-3 text-sm mt-2"><p className="font-medium mb-1">Opening Hours</p><p className="text-muted-foreground whitespace-pre-line">{chatbot.contact.hours_text}</p></div>}
+                {chatbot.contact.hours_text && <div className="border bg-secondary p-3 text-sm mt-2"><p className="font-medium mb-1">Opening Hours</p><p className="text-muted-foreground whitespace-pre-line">{chatbot.contact.hours_text}</p></div>}
               </CardContent>
             </Card>
           )}
@@ -106,7 +106,7 @@ const ShopDetail = () => {
           {chatbot.schedules.length === 0 ? (
             <Card><CardContent className="py-8 text-center text-muted-foreground">No schedule available</CardContent></Card>
           ) : (
-            <Card className="shadow-card">
+            <Card>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -140,14 +140,14 @@ const ShopDetail = () => {
             ) : (
               <div className="space-y-3">
                 {block.instances.map((instance, index) => (
-                  <Card key={index} className="shadow-card">
+                  <Card key={index}>
                     <CardHeader>
                       <CardTitle className="text-base">{block.type_name} #{index + 1}</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="grid gap-3 md:grid-cols-2">
                         {Object.entries(instance).map(([key, value]) => (
-                          <div key={`${block.type_id}-${index}-${key}`} className="rounded-md border bg-secondary/40 p-3">
+                          <div key={`${block.type_id}-${index}-${key}`} className="border bg-secondary/40 p-3">
                             <p className="text-xs uppercase tracking-wide text-muted-foreground">{toReadableLabel(key)}</p>
                             <p className="mt-1 text-sm font-medium break-words">{formatValue(value)}</p>
                           </div>

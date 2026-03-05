@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MessageCircle, X, Send } from "lucide-react";
+
 import { ApiError } from "@/lib/api";
 import { PublicChatHistoryMessage, userApi } from "@/lib/user-api";
 
@@ -86,34 +86,32 @@ const ChatWidget = ({ shopName, domain }: ChatWidgetProps) => {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full gradient-brand shadow-glow text-primary-foreground hover:scale-105 transition-transform"
+          className="fixed bottom-6 right-6 z-50 flex h-14 px-4 items-center justify-center border bg-card text-foreground"
           aria-label="Open chatbot widget"
         >
-          <MessageCircle className="h-6 w-6" />
+          Chat
         </button>
       )}
 
       {open && (
         <div
-          className="fixed bottom-6 right-6 z-50 w-80 sm:w-96 rounded-2xl border bg-card shadow-elevated flex flex-col animate-slide-up"
+          className="fixed bottom-6 right-6 z-50 w-80 sm:w-96 border bg-card flex flex-col"
           style={{ height: "28rem" }}
         >
-          <div className="flex items-center justify-between gradient-brand rounded-t-2xl px-4 py-3">
+          <div className="flex items-center justify-between border-b bg-secondary px-4 py-3">
             <div>
-              <p className="text-sm font-semibold text-primary-foreground">{shopName || "Shop"} Assistant</p>
-              <p className="text-xs text-primary-foreground/70">{headerSubtitle}</p>
+              <p className="text-sm font-semibold">{shopName || "Shop"} Assistant</p>
+              <p className="text-xs text-muted-foreground">{headerSubtitle}</p>
             </div>
-            <button onClick={() => setOpen(false)} className="text-primary-foreground/80 hover:text-primary-foreground" aria-label="Close chatbot widget">
-              <X className="h-5 w-5" />
-            </button>
+            <button onClick={() => setOpen(false)} className="text-foreground" aria-label="Close chatbot widget">Close</button>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {messages.map((message, index) => (
               <div key={`${message.role}-${index}`} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div
-                  className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${
-                    message.role === "user" ? "gradient-brand text-primary-foreground" : "bg-secondary text-secondary-foreground"
+                  className={`max-w-[80%] border px-3 py-2 text-sm ${
+                    message.role === "user" ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"
                   }`}
                 >
                   {message.text}
@@ -122,7 +120,7 @@ const ChatWidget = ({ shopName, domain }: ChatWidgetProps) => {
             ))}
             {sending && (
               <div className="flex justify-start">
-                <div className="max-w-[80%] rounded-2xl px-3 py-2 text-sm bg-secondary text-secondary-foreground">Thinking…</div>
+                <div className="max-w-[80%] border px-3 py-2 text-sm bg-secondary text-secondary-foreground">Thinking…</div>
               </div>
             )}
           </div>
@@ -136,8 +134,8 @@ const ChatWidget = ({ shopName, domain }: ChatWidgetProps) => {
               className="text-sm"
               disabled={sending}
             />
-            <Button size="icon" onClick={() => void sendMessage()} className="gradient-brand text-primary-foreground shrink-0" disabled={sending}>
-              <Send className="h-4 w-4" />
+            <Button onClick={() => void sendMessage()} className="shrink-0" disabled={sending}>
+              Send
             </Button>
           </div>
         </div>
