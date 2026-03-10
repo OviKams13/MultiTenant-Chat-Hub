@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import AdminLayout from "@/layouts/AdminLayout";
 import { useAuth } from "@/contexts/AuthContext";
-import { BlockType, ChatbotItemSummary, DynamicBlockInstance, ScheduleBlock, Tag, adminApi } from "@/lib/admin-api";
+import { BlockType, ChatbotItemSummary, DynamicBlockInstance, ScheduleBlock, Tag as TagRecord, adminApi } from "@/lib/admin-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,9 +10,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { Clock, Pencil, Plus, Tags, Trash2, Type } from "lucide-react";
+import { CalendarClock, ContactRound, Plus, Puzzle, Tag as TagIcon, Trash2 } from "lucide-react";
 
-type BuilderDropType = "CONTACT" | "SCHEDULE" | "DYNAMIC_INSTANCE";
+type BuilderToolType = "CONTACT" | "SCHEDULE" | "CUSTOM_BLOCK" | "TAGS" | `TYPE:${number}`;
 
 type Mode =
   | { type: "NONE" }
@@ -41,6 +41,40 @@ interface SchemaField {
   required: boolean;
   options?: string[];
 }
+
+
+interface ToolColorStyle {
+  container: string;
+  iconWrap: string;
+}
+
+const TOOL_COLORS: Record<"CONTACT" | "SCHEDULE" | "CUSTOM_BLOCK" | "TAGS", ToolColorStyle> = {
+  CONTACT: {
+    container: "border-rose-200/80 bg-rose-50/60 hover:bg-rose-100/60",
+    iconWrap: "bg-rose-100 text-rose-700",
+  },
+  SCHEDULE: {
+    container: "border-sky-200/80 bg-sky-50/60 hover:bg-sky-100/60",
+    iconWrap: "bg-sky-100 text-sky-700",
+  },
+  CUSTOM_BLOCK: {
+    container: "border-violet-200/80 bg-violet-50/60 hover:bg-violet-100/60",
+    iconWrap: "bg-violet-100 text-violet-700",
+  },
+  TAGS: {
+    container: "border-amber-200/80 bg-amber-50/70 hover:bg-amber-100/70",
+    iconWrap: "bg-amber-100 text-amber-700",
+  },
+};
+
+const DYNAMIC_TOOL_COLORS: ToolColorStyle[] = [
+  { container: "border-fuchsia-200/80 bg-fuchsia-50/60 hover:bg-fuchsia-100/60", iconWrap: "bg-fuchsia-100 text-fuchsia-700" },
+  { container: "border-cyan-200/80 bg-cyan-50/60 hover:bg-cyan-100/60", iconWrap: "bg-cyan-100 text-cyan-700" },
+  { container: "border-emerald-200/80 bg-emerald-50/60 hover:bg-emerald-100/60", iconWrap: "bg-emerald-100 text-emerald-700" },
+  { container: "border-indigo-200/80 bg-indigo-50/60 hover:bg-indigo-100/60", iconWrap: "bg-indigo-100 text-indigo-700" },
+  { container: "border-orange-200/80 bg-orange-50/60 hover:bg-orange-100/60", iconWrap: "bg-orange-100 text-orange-700" },
+  { container: "border-teal-200/80 bg-teal-50/60 hover:bg-teal-100/60", iconWrap: "bg-teal-100 text-teal-700" },
+];
 
 const EMPTY_CONTACT: ContactFormData = {
   org_name: "",
@@ -81,13 +115,6 @@ function parseSchemaFields(schemaDefinition: Record<string, unknown> | undefined
       } satisfies SchemaField;
     })
     .filter((field): field is SchemaField => field !== null);
-}
-
-function formatFieldValue(value: unknown, type: DynamicFieldType): string {
-  if (value === null || value === undefined || value === "") return "—";
-  if (type === "boolean") return value ? "True" : "False";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
 }
 
 const ChatbotBuilder = () => {
@@ -141,24 +168,40 @@ const ChatbotBuilder = () => {
   }, [loadData]);
 
 
-  const openFromDrop = (value: BuilderDropType) => {
+  const openFromDrop = (value: BuilderToolType) => {
     if (value === "CONTACT") {
       setMode({ type: "CONTACT" });
       return;
     }
 
     if (value === "SCHEDULE") {
-      setMode({ type: "SCHEDULE" });
+      setMode({ type: "SCHEDULE", data: schedules[0] });
       return;
     }
 
-    setMode({ type: "BLOCK_TYPE" });
-    toast({ title: "Create custom block", description: "Define your block type before adding block data." });
+    if (value === "TAGS") {
+      setMode({ type: "TAGS" });
+      return;
+    }
+
+    if (value === "CUSTOM_BLOCK") {
+      setMode({ type: "BLOCK_TYPE" });
+      toast({ title: "Create custom block", description: "Define your block type before adding block data." });
+      return;
+    }
+
+    const [, rawTypeId] = value.split(":");
+    const typeId = Number(rawTypeId);
+    const blockType = blockTypes.find((type) => type.type_id === typeId);
+    if (!blockType) return;
+
+    const existingInstance = (instancesByType[typeId] ?? [])[0];
+    setMode({ type: "INSTANCE", blockType, data: existingInstance });
   };
 
   const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    const type = e.dataTransfer.getData("builder-drop-type") as BuilderDropType;
+    const type = e.dataTransfer.getData("builder-tool-type") as BuilderToolType;
     if (!type) return;
     openFromDrop(type);
   };
@@ -261,216 +304,162 @@ const ChatbotBuilder = () => {
     }
   };
 
-  const deleteType = async (typeId: number) => {
-    if (!token) return;
-    try {
-      await adminApi.deleteBlockType(chatbotId, typeId, token);
-      toast({ title: "Block type deleted" });
-      await loadData();
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    }
-  };
-
-  const deleteSchedule = async (entityId: number) => {
-    if (!token) return;
-    await adminApi.deleteSchedule(chatbotId, entityId, token);
-    toast({ title: "Schedule deleted" });
-    await loadData();
-  };
-
-  const deleteInstance = async (typeId: number, entityId: number) => {
-    if (!token) return;
-    await adminApi.deleteDynamicInstance(chatbotId, typeId, entityId, token);
-    toast({ title: "Instance deleted" });
-    await loadData();
-  };
-
   const editType = async (typeId: number) => {
     if (!token) return;
     const full = await adminApi.getBlockType(chatbotId, typeId, token);
     setMode({ type: "BLOCK_TYPE", data: full });
   };
 
-  const editInstance = async (type: BlockType, entityId: number) => {
-    if (!token) return;
-    const full = await adminApi.getDynamicInstance(chatbotId, type.type_id, entityId, token);
-    setMode({ type: "INSTANCE", blockType: type, data: full });
-  };
+  const tools = [
+    { type: "CONTACT" as const, label: "Contact Block", icon: ContactRound },
+    { type: "SCHEDULE" as const, label: "Schedule Block", icon: CalendarClock },
+    { type: "CUSTOM_BLOCK" as const, label: "Custom Block", icon: Puzzle },
+  ];
+
+  const dynamicToolColorMap = useMemo(() => {
+    const usedIndexes = new Set<number>();
+    const assignments: Record<number, ToolColorStyle> = {};
+
+    const sortedTypes = [...blockTypes].sort((a, b) => a.type_id - b.type_id);
+
+    sortedTypes.forEach((type) => {
+      const preferred = Math.abs(type.type_id) % DYNAMIC_TOOL_COLORS.length;
+      let selected = preferred;
+
+      if (usedIndexes.has(selected)) {
+        const available = DYNAMIC_TOOL_COLORS.findIndex((_, index) => !usedIndexes.has(index));
+        if (available >= 0) {
+          selected = available;
+        }
+      }
+
+      usedIndexes.add(selected);
+      assignments[type.type_id] = DYNAMIC_TOOL_COLORS[selected];
+    });
+
+    return assignments;
+  }, [blockTypes]);
 
   return (
-    <AdminLayout>
-      <h1 className="text-2xl font-bold mb-6">Builder — {shopName}</h1>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-7 space-y-4">
-          <Card>
-            <CardHeader><CardTitle className="text-base">Drag & drop block palette</CardTitle></CardHeader>
-            <CardContent className="grid sm:grid-cols-3 gap-3">
-              {[
-                { type: "CONTACT", label: "Contact Block" },
-                { type: "SCHEDULE", label: "Schedule Block" },
-                { type: "DYNAMIC_INSTANCE", label: "Custom Block" },
-              ].map((item) => (
-                <div
-                  key={item.type}
+    <AdminLayout mainClassName="max-w-none w-full px-2 py-2 min-h-[calc(100vh-4rem)]">
+      <div className="flex h-[calc(100vh-4.5rem)] flex-col gap-2 lg:flex-row">
+        <Card className="lg:w-72 shrink-0 h-full">
+          <CardHeader className="py-4">
+            <CardTitle className="text-sm font-semibold flex items-center justify-between gap-2">
+              <span>Builder tools</span>
+              <span className="text-xs font-normal text-muted-foreground truncate">{shopName}</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {tools.map((tool) => {
+              const Icon = tool.icon;
+              const color = TOOL_COLORS[tool.type];
+              return (
+                <button
+                  key={tool.type}
                   draggable
-                  onDragStart={(e) => e.dataTransfer.setData("builder-drop-type", item.type)}
-                  className="rounded-md border bg-muted/30 p-3 text-sm font-medium cursor-grab"
+                  onDragStart={(e) => e.dataTransfer.setData("builder-tool-type", tool.type)}
+                  className={`w-full rounded-lg border p-3 text-left transition-colors cursor-grab ${color.container}`}
                 >
-                  {item.label}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          <Card onDrop={onDrop} onDragOver={(e) => e.preventDefault()} className="border-dashed">
-            <CardHeader><CardTitle className="text-base">Drop zone</CardTitle></CardHeader>
-            <CardContent className="text-sm text-muted-foreground">Drop a block from the palette here to open its form.</CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader><CardTitle className="text-base">Static blocks</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              <div className="rounded-md border p-3 text-sm">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Contact</p>
-                    <p className="text-muted-foreground">{contact ? contact.org_name : "No contact configured"}</p>
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <span className={`inline-flex h-6 w-6 items-center justify-center rounded-md ${color.iconWrap}`}>
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    {tool.label}
                   </div>
-                  <Button size="sm" variant="outline" onClick={() => setMode({ type: "CONTACT" })}>Edit</Button>
-                </div>
+                </button>
+              );
+            })}
+
+            {blockTypes.length > 0 && (
+              <>
+                <Separator className="my-3" />
+                <p className="text-xs font-medium text-muted-foreground px-1">Custom type blocks</p>
+                {blockTypes.map((type) => {
+                  const color = dynamicToolColorMap[type.type_id] ?? DYNAMIC_TOOL_COLORS[0];
+                  return (
+                    <button
+                      key={type.type_id}
+                      draggable
+                      onDragStart={(e) => e.dataTransfer.setData("builder-tool-type", `TYPE:${type.type_id}`)}
+                      className={`w-full rounded-lg border p-3 text-left transition-colors cursor-grab ${color.container}`}
+                    >
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        <span className={`inline-flex h-6 w-6 items-center justify-center rounded-md ${color.iconWrap}`}>
+                          <Puzzle className="h-4 w-4" />
+                        </span>
+                        {type.type_name}
+                      </div>
+                    </button>
+                  );
+                })}
+              </>
+            )}
+
+            <Separator className="my-3" />
+            <button
+              draggable
+              onDragStart={(e) => e.dataTransfer.setData("builder-tool-type", "TAGS")}
+              className={`w-full rounded-lg border p-3 text-left transition-colors cursor-grab ${TOOL_COLORS.TAGS.container}`}
+            >
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <span className={`inline-flex h-6 w-6 items-center justify-center rounded-md ${TOOL_COLORS.TAGS.iconWrap}`}>
+                  <TagIcon className="h-4 w-4" />
+                </span>
+                Manage Tag
               </div>
+            </button>
+          </CardContent>
+        </Card>
 
-              <Separator />
+        <div
+          className="flex-1 h-full overflow-hidden rounded-xl border border-dashed bg-white p-4 lg:p-5"
+          onDrop={onDrop}
+          onDragOver={(e) => e.preventDefault()}
+          style={{
+            backgroundImage: "radial-gradient(circle, rgba(148,163,184,0.25) 1px, transparent 1px)",
+            backgroundSize: "18px 18px",
+          }}
+        >
 
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="font-medium text-sm">Schedules</p>
-                  <Button size="sm" variant="outline" onClick={() => setMode({ type: "SCHEDULE" })}><Plus className="h-3 w-3 mr-1" /> Add</Button>
-                </div>
-                {schedules.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No schedules yet</p>
-                ) : (
-                  schedules.map((s) => (
-                    <div key={s.entity_id} className="rounded-md border p-3 mb-2 text-sm">
-                      <p className="font-medium">{s.title}</p>
-                      <p className="text-muted-foreground">{s.day_of_week}: {s.open_time} - {s.close_time}</p>
-                      <div className="flex gap-1 mt-2">
-                        <Button size="sm" variant="ghost" onClick={() => setMode({ type: "SCHEDULE", data: s })}><Pencil className="h-3 w-3" /></Button>
-                        <Button size="sm" variant="ghost" onClick={() => deleteSchedule(s.entity_id)}><Trash2 className="h-3 w-3 text-destructive" /></Button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2"><Type className="h-4 w-4" /> Custom blocks</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {blockTypes.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No block types available.</p>
-              ) : (
-                blockTypes.map((type) => (
-                  <div key={type.type_id} className="rounded-md border p-3 text-sm">
-                    <div className="flex justify-between items-center gap-2">
-                      <div>
-                        <p className="font-medium">{type.type_name} {type.is_system ? "(system)" : ""}</p>
-                        <p className="text-muted-foreground">Scope: {type.scope}</p>
-                      </div>
-                      <div className="flex gap-1">
-                        <Button size="sm" variant="ghost" onClick={() => editType(type.type_id)}><Pencil className="h-3 w-3" /></Button>
-                        {!type.is_system && type.scope === "CHATBOT" && (
-                          <Button size="sm" variant="ghost" onClick={() => deleteType(type.type_id)}><Trash2 className="h-3 w-3 text-destructive" /></Button>
-                        )}
-                      </div>
-                    </div>
-                    <div className="mt-2 flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => setMode({ type: "INSTANCE", blockType: type })}>Add block data</Button>
-                    </div>
-                    {(instancesByType[type.type_id] ?? []).map((instance) => (
-                      <div key={instance.entity_id} className="rounded-md border mt-2 p-2">
-                        <p className="text-xs font-medium">Entity #{instance.entity_id}</p>
-                        <div className="mt-2 space-y-1 text-xs">
-                          {parseSchemaFields(type.schema_definition).length > 0 ? (
-                            parseSchemaFields(type.schema_definition).map((field) => (
-                              <p key={`${instance.entity_id}-${field.name}`} className="text-muted-foreground">
-                                <span className="font-medium text-foreground">{field.label}:</span>{" "}
-                                {formatFieldValue(instance.data[field.name], field.type)}
-                              </p>
-                            ))
-                          ) : (
-                            <pre className="text-[11px] overflow-auto text-muted-foreground">{JSON.stringify(instance.data, null, 2)}</pre>
-                          )}
-                        </div>
-                        <div className="flex gap-1 mt-1">
-                          <Button size="sm" variant="ghost" onClick={() => editInstance(type, instance.entity_id)}><Pencil className="h-3 w-3" /></Button>
-                          <Button size="sm" variant="ghost" onClick={() => deleteInstance(type.type_id, instance.entity_id)}><Trash2 className="h-3 w-3 text-destructive" /></Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ))
+          {mode.type !== "NONE" && (
+            <div className="mx-auto mt-3 mb-4 h-[calc(100%-1.75rem)] w-full max-w-3xl overflow-y-auto pr-1">
+              {mode.type === "CONTACT" && (
+                <ContactForm
+                  data={contact ?? EMPTY_CONTACT}
+                  onSave={saveContact}
+                  onCancel={() => setMode({ type: "NONE" })}
+                  saving={saving}
+                />
               )}
-            </CardContent>
-          </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2"><Tags className="h-4 w-4" /> Tags & Item tags routes</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Button size="sm" variant="outline" onClick={() => setMode({ type: "TAGS" })}>Manage tags / item tags</Button>
-            </CardContent>
-          </Card>
-        </div>
+              {mode.type === "SCHEDULE" && (
+                <ScheduleForm data={mode.data} onSave={saveSchedule} onCancel={() => setMode({ type: "NONE" })} saving={saving} />
+              )}
 
-        <div className="lg:col-span-5">
-          {mode.type === "NONE" && (
-            <Card className="border-dashed">
-              <CardContent className="flex items-center justify-center py-16 text-center text-muted-foreground">
-                <p>Select a panel action or drop a block to edit builder content.</p>
-              </CardContent>
-            </Card>
-          )}
+              {mode.type === "BLOCK_TYPE" && (
+                <BlockTypeForm data={mode.data} onSave={saveBlockType} onCancel={() => setMode({ type: "NONE" })} saving={saving} />
+              )}
 
-          {mode.type === "CONTACT" && (
-            <ContactForm
-              data={contact ?? EMPTY_CONTACT}
-              onSave={saveContact}
-              onCancel={() => setMode({ type: "NONE" })}
-              saving={saving}
-            />
-          )}
+              {mode.type === "INSTANCE" && (
+                <DynamicInstanceForm
+                  blockType={mode.blockType}
+                  data={mode.data}
+                  onSave={(payload) => saveInstance(mode.blockType, payload)}
+                  onEditDefinition={() => editType(mode.blockType.type_id)}
+                  onCancel={() => setMode({ type: "NONE" })}
+                  saving={saving}
+                />
+              )}
 
-          {mode.type === "SCHEDULE" && (
-            <ScheduleForm data={mode.data} onSave={saveSchedule} onCancel={() => setMode({ type: "NONE" })} saving={saving} />
-          )}
-
-          {mode.type === "BLOCK_TYPE" && (
-            <BlockTypeForm data={mode.data} onSave={saveBlockType} onCancel={() => setMode({ type: "NONE" })} saving={saving} />
-          )}
-
-          {mode.type === "INSTANCE" && (
-            <DynamicInstanceForm
-              blockType={mode.blockType}
-              data={mode.data}
-              onSave={(payload) => saveInstance(mode.blockType, payload)}
-              onCancel={() => setMode({ type: "NONE" })}
-              saving={saving}
-            />
-          )}
-
-          {mode.type === "TAGS" && token && (
-            <TagsForm
-              chatbotId={chatbotId}
-              token={token}
-              onCancel={() => setMode({ type: "NONE" })}
-            />
+              {mode.type === "TAGS" && token && (
+                <TagsForm
+                  chatbotId={chatbotId}
+                  token={token}
+                  onCancel={() => setMode({ type: "NONE" })}
+                />
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -702,12 +691,14 @@ function DynamicInstanceForm({
   blockType,
   data,
   onSave,
+  onEditDefinition,
   onCancel,
   saving,
 }: {
   blockType: BlockType;
   data?: DynamicBlockInstance;
   onSave: (payload: { entity_id?: number; data: Record<string, unknown> }) => void;
+  onEditDefinition: () => void;
   onCancel: () => void;
   saving: boolean;
 }) {
@@ -778,6 +769,7 @@ function DynamicInstanceForm({
         )}
         <div className="flex gap-2">
           <Button onClick={handleSave} className="gradient-brand text-primary-foreground" disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
+          <Button variant="outline" onClick={onEditDefinition}>Edit Block Type Definition</Button>
           <Button variant="outline" onClick={onCancel}>Cancel</Button>
         </div>
       </CardContent>
@@ -787,7 +779,7 @@ function DynamicInstanceForm({
 
 function TagsForm({ chatbotId, token, onCancel }: { chatbotId: number; token: string; onCancel: () => void }) {
   const { toast } = useToast();
-  const [tags, setTags] = useState<Tag[]>([]);
+  const [tags, setTags] = useState<TagRecord[]>([]);
   const [items, setItems] = useState<ChatbotItemSummary[]>([]);
   const [editingTagId, setEditingTagId] = useState<number | null>(null);
   const [tagCode, setTagCode] = useState("");
@@ -841,7 +833,7 @@ function TagsForm({ chatbotId, token, onCancel }: { chatbotId: number; token: st
     throw new Error("ID not found for this chatbot. Use a valid item_id or entity_id.");
   };
 
-  const startEditTag = (tag: Tag) => {
+  const startEditTag = (tag: TagRecord) => {
     setEditingTagId(tag.id);
     setTagCode(tag.tag_code);
     setDescription(tag.description ?? "");
@@ -881,7 +873,7 @@ function TagsForm({ chatbotId, token, onCancel }: { chatbotId: number; token: st
 
 
 
-  const deleteTag = async (tag: Tag) => {
+  const deleteTag = async (tag: TagRecord) => {
     const confirmed = window.confirm(`Are you sure you want to delete tag "${tag.tag_code}"?`);
     if (!confirmed) return;
 

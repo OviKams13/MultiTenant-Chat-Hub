@@ -3,9 +3,10 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 import { Store, User, LogOut } from "lucide-react";
 
-const AdminLayout = ({ children }: { children: ReactNode }) => {
+const AdminLayout = ({ children, mainClassName }: { children: ReactNode; mainClassName?: string }) => {
   const { fullName, signOut } = useAuth();
   const navigate = useNavigate();
 
@@ -39,7 +40,7 @@ const AdminLayout = ({ children }: { children: ReactNode }) => {
           </DropdownMenu>
         </div>
       </header>
-      <main className="container py-8">{children}</main>
+      <main className={cn("container py-8", mainClassName)}>{children}</main>
     </div>
   );
 };
