@@ -1,0 +1,16 @@
+node_modules
+.npm
+.turbo
+
+.env
+.env.*
+
+coverage
+*.log
+
+**/node_modules
+**/dist
+**/build
+**/coverage
+
+!**/.env.example
