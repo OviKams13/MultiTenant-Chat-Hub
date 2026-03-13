@@ -1,0 +1,11 @@
+{
+  "name": "@mth/demo-html-host",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "echo 'demo-html-host scaffold: dev command not implemented yet'",
+    "build": "echo 'demo-html-host scaffold build'",
+    "lint": "echo 'demo-html-host scaffold lint'",
+    "test": "echo 'demo-html-host scaffold test'"
+  }
+}
