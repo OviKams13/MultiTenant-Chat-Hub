@@ -1,15 +1,11 @@
+import type { ChatMessage, PublicChatRequest, PublicChatResponse, SourceItem } from '@mth/shared-types';
 import { KnowledgeItem } from './KnowledgeItem';
 
-// Chat runtime interfaces define the visitor-facing contract shared across validation, controller, and service layers.
-// The public endpoint supports both widget mode (domain) and dashboard mode (chatbotId) in the same payload.
-// History messages are accepted only as user/assistant turns and are never treated as trusted system instructions.
-// Response DTOs in this file keep frontend payloads stable while services evolve internally.
-export type ChatHistoryRole = 'user' | 'assistant';
+// ChatRuntime interfaces define the visitor-facing contract shared across validation, controller, and service layers.
+// Public request/response and reusable runtime message/source contracts are centralized in @mth/shared-types.
+// Backend-specific envelopes and internal orchestration types remain local to preserve separation of concerns.
 
-export interface ChatRuntimeHistoryMessage {
-  role: ChatHistoryRole;
-  content: string;
-}
+export type ChatRuntimeHistoryMessage = ChatMessage;
 
 // Backward-compatible alias keeps pre-8.7 imports stable while introducing explicit runtime naming.
 export type ChatHistoryMessage = ChatRuntimeHistoryMessage;
@@ -31,25 +27,11 @@ export interface ChatRuntimeLLMResult {
   answer: string;
 }
 
-export interface ChatRuntimeInput {
-  chatbotId?: number;
-  domain?: string;
-  message: string;
-  history?: ChatRuntimeHistoryMessage[];
-}
+export type ChatRuntimeInput = PublicChatRequest;
 
-export type ChatRuntimeSourceEntityType = 'CONTACT' | 'SCHEDULE' | 'DYNAMIC';
+export type ChatRuntimeSourceItem = SourceItem;
 
-export interface ChatRuntimeSourceItem {
-  entity_id: number;
-  entity_type: ChatRuntimeSourceEntityType;
-  tags: string[];
-}
-
-export interface ChatRuntimeSuccessData {
-  answer: string;
-  sourceItems: ChatRuntimeSourceItem[];
-}
+export type ChatRuntimeSuccessData = PublicChatResponse;
 
 export interface ChatRuntimeErrorPayload {
   code: string;
@@ -71,10 +53,7 @@ export interface ChatRuntimeResponseError {
 
 export type ChatRuntimeResponse = ChatRuntimeResponseSuccess | ChatRuntimeResponseError;
 
-export interface ChatRuntimeResult {
-  answer: string;
-  sourceItems: ChatRuntimeSourceItem[];
-}
+export type ChatRuntimeResult = PublicChatResponse;
 
 // Raw context is returned by service internals before ranking/limiting in the next runtime feature.
 export type ChatRuntimeRawContext = KnowledgeItem[];

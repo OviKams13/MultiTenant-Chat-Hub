@@ -1,1 +1,5 @@
-module.exports = require('./node.cjs');
+const { nodeConfig } = require('./node.cjs');
+
+module.exports = {
+  nodeConfig
+};

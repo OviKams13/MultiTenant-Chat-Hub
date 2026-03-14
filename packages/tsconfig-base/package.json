@@ -5,5 +5,9 @@
   "files": [
     "base.json",
     "node.json"
-  ]
+  ],
+  "exports": {
+    "./base.json": "./base.json",
+    "./node.json": "./node.json"
+  }
 }
