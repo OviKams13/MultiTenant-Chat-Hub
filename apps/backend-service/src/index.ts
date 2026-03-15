@@ -1,42 +1,8 @@
-import cors from 'cors';
 import dotenv from 'dotenv';
-import express from 'express';
-import v1Router from './api/v1';
-import staticBlockRoutes from './api/v1/routes/staticBlockRoutes';
-import blockTypeRoutes from './api/v1/routes/blockTypeRoutes';
-import itemTagRoutes from './api/v1/routes/itemTagRoutes';
-import dynamicBlockInstanceRoutes from './api/v1/routes/dynamicBlockInstanceRoutes';
-import publicChatRoutes from './api/v1/routes/publicChatRoutes';
-import { errorHandler } from './api/v1/middlewares/errorHandler';
+import { createApp } from './app';
 import { sequelize } from './config/DatabaseConfig';
 
 dotenv.config();
-
-// createApp builds the HTTP stack so tests can import app without opening a network port.
-// Feature 1 mounts auth endpoints under /api/v1/auth to align with versioned backend architecture.
-// A health route remains available for simple uptime checks in local and deployment environments.
-// errorHandler must be mounted last to normalize all thrown AppError instances.
-export function createApp() {
-  const app = express();
-
-  app.use(cors());
-  app.use(express.json());
-
-  app.get('/health', (_req, res) => {
-    res.json({ status: 'ok', message: 'Backend is running' });
-  });
-
-  app.use('/api/v1', v1Router);
-  app.use('/api/v1/chatbots', staticBlockRoutes);
-  app.use('/api/v1/chatbots', blockTypeRoutes);
-  app.use('/api/v1/chatbots', itemTagRoutes);
-  app.use('/api/v1/chatbots', dynamicBlockInstanceRoutes);
-  // Public runtime chat stays outside /chatbots so visitors can call it without admin routing overlap.
-  app.use('/api/v1', publicChatRoutes);
-  app.use(errorHandler);
-
-  return app;
-}
 
 export const app = createApp();
 
@@ -46,7 +12,9 @@ export async function startServer(): Promise<void> {
   await sequelize.authenticate();
 
   app.listen(port, () => {
-    console.log(`🚀 Server running on http://localhost:${port}`);
+    console.log(`🚀 Backend service running on http://localhost:${port}`);
+    console.log(`🩺 Health check: http://localhost:${port}/health`);
+    console.log(`📘 API docs: http://localhost:${port}/api-docs`);
   });
 }
 

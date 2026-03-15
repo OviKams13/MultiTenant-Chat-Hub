@@ -7,7 +7,11 @@ module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ['<rootDir>/src', '<rootDir>/tests'],
-  testMatch: ['**/src/api/v1/tests/chat-runtime/ChatRuntimeService.test.ts', '**/tests/chat-runtime/publicChat.api.test.ts'],
+  testMatch: [
+    '**/src/api/v1/tests/chat-runtime/ChatRuntimeService.test.ts',
+    '**/tests/chat-runtime/publicChat.api.test.ts',
+    '**/tests/service-boundary/backendPackaging.api.test.ts'
+  ],
   clearMocks: true,
   restoreMocks: true,
   resetMocks: false,

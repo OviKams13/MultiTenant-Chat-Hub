@@ -5,13 +5,12 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "build": "tsc",
+    "build": "npm run build --workspace @mth/shared-types && tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "lint": "eslint \"src/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\"",
     "seed": "ts-node-dev --transpile-only src/scripts/seedDatabase.ts",
-    "test": "node -r ts-node/register --test tests/auth/auth.api.test.js",
-    "test:jest": "jest --config jest.config.cjs --runInBand",
+    "test": "jest --config jest.config.cjs --runInBand",
     "test:feature8.9": "jest --config jest.config.cjs --runInBand src/api/v1/tests/chat-runtime/ChatRuntimeService.test.ts tests/chat-runtime/publicChat.api.test.ts"
   },
   "keywords": [],
