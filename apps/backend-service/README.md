@@ -51,6 +51,11 @@ npm run lint --workspace @mth/backend-service
 npm run test --workspace @mth/backend-service
 ```
 
+## Public runtime contract version
+
+- `POST /api/v1/public/chat` is treated as the stable **API v1** runtime contract.
+- Future breaking runtime changes must be introduced under a new path version (for example `/api/v2/public/chat`).
+
 ## Operational endpoints
 
 - Health check: `GET /health`

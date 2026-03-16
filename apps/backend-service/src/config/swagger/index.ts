@@ -139,6 +139,89 @@ export const authSwaggerSpec = {
           scope: { type: 'string', enum: ['GLOBAL', 'CHATBOT'] },
           created_at: { type: 'string', format: 'date-time' }
         }
+      },
+      ChatMessage: {
+        type: 'object',
+        required: ['role', 'content'],
+        properties: {
+          role: { type: 'string', enum: ['user', 'assistant'] },
+          content: { type: 'string' }
+        }
+      },
+      PublicChatRequest: {
+        type: 'object',
+        required: ['message'],
+        properties: {
+          chatbotId: { type: 'integer', minimum: 1 },
+          domain: { type: 'string' },
+          message: { type: 'string' },
+          history: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/ChatMessage' }
+          }
+        },
+        description:
+          'v1 public runtime request contract. At least one of chatbotId or domain must be provided (enforced by runtime validation).'
+      },
+      SourceItem: {
+        type: 'object',
+        required: ['entity_id', 'entity_type', 'tags'],
+        properties: {
+          entity_id: { type: 'integer' },
+          entity_type: { type: 'string', enum: ['CONTACT', 'SCHEDULE', 'DYNAMIC'] },
+          tags: {
+            type: 'array',
+            items: { type: 'string' }
+          }
+        }
+      },
+      PublicChatResponseData: {
+        type: 'object',
+        required: ['answer', 'sourceItems'],
+        properties: {
+          answer: { type: 'string' },
+          sourceItems: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/SourceItem' }
+          }
+        }
+      },
+      PublicRuntimeError: {
+        type: 'object',
+        required: ['code', 'message'],
+        properties: {
+          code: {
+            type: 'string',
+            enum: [
+              'VALIDATION_ERROR',
+              'CHATBOT_NOT_FOUND',
+              'NO_RELEVANT_TAG',
+              'LLM_UNAVAILABLE',
+              'RATE_LIMIT_EXCEEDED',
+              'INTERNAL_ERROR'
+            ]
+          },
+          message: { type: 'string' },
+          details: { nullable: true }
+        }
+      },
+      PublicChatSuccessEnvelope: {
+        type: 'object',
+        required: ['success', 'data', 'error'],
+        properties: {
+          success: { type: 'boolean', enum: [true] },
+          data: { $ref: '#/components/schemas/PublicChatResponseData' },
+          error: { type: 'null' }
+        }
+      },
+      PublicChatErrorEnvelope: {
+        type: 'object',
+        required: ['success', 'data', 'error'],
+        properties: {
+          success: { type: 'boolean', enum: [false] },
+          data: { type: 'null' },
+          error: { $ref: '#/components/schemas/PublicRuntimeError' }
+        }
       }
     }
   },
@@ -149,7 +232,12 @@ export const authSwaggerSpec = {
     { name: 'StaticBlocks', description: 'Contact and schedule static blocks for each chatbot' },
     { name: 'Dynamic Block Types', description: 'Manage dynamic block type definitions per chatbot' },
     { name: 'Item Tags', description: 'Read and replace item-level tags for one chatbot item' },
-    { name: 'Dynamic Block Instances', description: 'CRUD operations for chatbot dynamic block instances' }
+    { name: 'Dynamic Block Instances', description: 'CRUD operations for chatbot dynamic block instances' },
+    {
+      name: 'Public Runtime',
+      description:
+        'Stable API v1 runtime surface consumed by public widget integrations. Breaking changes must move to /api/v2.'
+    }
   ],
   paths: {
     '/api/v1/auth/register': {
@@ -572,6 +660,132 @@ export const authSwaggerSpec = {
         }
       }
     },
+
+    '/api/v1/public/chat': {
+      post: {
+        tags: ['Public Runtime'],
+        summary: 'API v1 public chat runtime endpoint for widget integrations',
+        description:
+          'Stable v1 runtime contract. Breaking changes must be released under a future /api/v2 public runtime path.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/PublicChatRequest' }
+            }
+          }
+        },
+        responses: {
+          '200': {
+            description: 'Runtime response generated successfully',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/PublicChatSuccessEnvelope' }
+              }
+            }
+          },
+          '400': {
+            description: 'Validation error or no relevant tag for user message',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/PublicChatErrorEnvelope' },
+                examples: {
+                  validation: {
+                    value: {
+                      success: false,
+                      data: null,
+                      error: { code: 'VALIDATION_ERROR', message: 'Invalid chat runtime request body' }
+                    }
+                  },
+                  noRelevantTag: {
+                    value: {
+                      success: false,
+                      data: null,
+                      error: { code: 'NO_RELEVANT_TAG', message: 'No relevant tags for this question' }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          '404': {
+            description: 'Chatbot not found for provided domain/chatbotId',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/PublicChatErrorEnvelope' },
+                examples: {
+                  chatbotNotFound: {
+                    value: {
+                      success: false,
+                      data: null,
+                      error: { code: 'CHATBOT_NOT_FOUND', message: 'Chatbot not found' }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          '429': {
+            description: 'Public runtime rate limit exceeded',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/PublicChatErrorEnvelope' },
+                examples: {
+                  rateLimited: {
+                    value: {
+                      success: false,
+                      data: null,
+                      error: {
+                        code: 'RATE_LIMIT_EXCEEDED',
+                        message: 'Too many chat requests, please retry in a moment.'
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          '503': {
+            description: 'LLM generation service temporarily unavailable',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/PublicChatErrorEnvelope' },
+                examples: {
+                  llmUnavailable: {
+                    value: {
+                      success: false,
+                      data: null,
+                      error: {
+                        code: 'LLM_UNAVAILABLE',
+                        message: 'The answer generation service is temporarily unavailable.'
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          '500': {
+            description: 'Unexpected internal runtime error',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/PublicChatErrorEnvelope' },
+                examples: {
+                  internalError: {
+                    value: {
+                      success: false,
+                      data: null,
+                      error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred.' }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
 
     '/api/v1/tags': {
       get: {

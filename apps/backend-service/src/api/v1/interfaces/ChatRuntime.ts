@@ -1,9 +1,18 @@
-import type { ChatMessage, PublicChatRequest, PublicChatResponse, SourceItem } from '@mth/shared-types';
+import type {
+  ChatMessage,
+  PublicApiError,
+  PublicChatApiEnvelope,
+  PublicChatRequest,
+  PublicChatResponse,
+  PublicChatSuccessEnvelope,
+  PublicRuntimeErrorCode,
+  SourceItem
+} from '@mth/shared-types';
 import { KnowledgeItem } from './KnowledgeItem';
 
 // ChatRuntime interfaces define the visitor-facing contract shared across validation, controller, and service layers.
 // Public request/response and reusable runtime message/source contracts are centralized in @mth/shared-types.
-// Backend-specific envelopes and internal orchestration types remain local to preserve separation of concerns.
+// Backend-specific envelopes and internal orchestration types remain local only when they are not public API contracts.
 
 export type ChatRuntimeHistoryMessage = ChatMessage;
 
@@ -33,17 +42,11 @@ export type ChatRuntimeSourceItem = SourceItem;
 
 export type ChatRuntimeSuccessData = PublicChatResponse;
 
-export interface ChatRuntimeErrorPayload {
-  code: string;
-  message: string;
-  details?: unknown;
-}
+export type ChatRuntimeErrorCode = PublicRuntimeErrorCode;
 
-export interface ChatRuntimeResponseSuccess {
-  success: true;
-  data: ChatRuntimeSuccessData;
-  error: null;
-}
+export type ChatRuntimeErrorPayload = PublicApiError<ChatRuntimeErrorCode>;
+
+export type ChatRuntimeResponseSuccess = PublicChatSuccessEnvelope;
 
 export interface ChatRuntimeResponseError {
   success: false;
@@ -51,7 +54,7 @@ export interface ChatRuntimeResponseError {
   error: ChatRuntimeErrorPayload;
 }
 
-export type ChatRuntimeResponse = ChatRuntimeResponseSuccess | ChatRuntimeResponseError;
+export type ChatRuntimeResponse = PublicChatApiEnvelope;
 
 export type ChatRuntimeResult = PublicChatResponse;
 

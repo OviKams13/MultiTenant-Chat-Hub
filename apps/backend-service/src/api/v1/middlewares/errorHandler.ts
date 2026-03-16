@@ -1,6 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
 import { AppError } from '../errors/AppError';
-import { ChatRuntimeErrorPayload } from '../interfaces/ChatRuntime';
 
 // Global error handler guarantees the response format required by the project contract.
 // Controllers forward all exceptions here through next(err) to keep transport logic thin and reusable.
@@ -9,8 +8,8 @@ import { ChatRuntimeErrorPayload } from '../interfaces/ChatRuntime';
 export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction): void {
   // Known business/validation errors keep their exact code and status so chat runtime clients can branch safely.
   if (err instanceof AppError) {
-    const errorPayload: ChatRuntimeErrorPayload = {
-      code: err.code ?? 'APPLICATION_ERROR',
+    const errorPayload: { code: string; message: string; details?: unknown } = {
+      code: err.code ?? 'INTERNAL_ERROR',
       message: err.message,
       ...(typeof err.details === 'undefined' ? {} : { details: err.details })
     };

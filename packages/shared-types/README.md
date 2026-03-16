@@ -14,3 +14,5 @@ This package prevents contract drift between independently shipped backend and w
 - `PublicChatResponse` (runtime `data` payload for successful public chat responses)
 - `WidgetConfig`
 - `WidgetRuntimeErrorCode`
+
+- `PUBLIC_CHAT_RUNTIME_API_VERSION` (currently `v1`)
