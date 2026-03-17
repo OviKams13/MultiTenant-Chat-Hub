@@ -93,7 +93,7 @@ test('validateChatRuntimeBody should reject malformed history payloads', () => {
 
 test('validateChatRuntimeBody should accept valid domain-only payload', () => {
   const result = validateChatRuntimeBody({ domain: 'Acme.Com', message: '  Hello  ' });
-  assert.deepEqual(result, { domain: 'acme.com', message: 'Hello', chatbotId: undefined, history: undefined });
+  assert.deepEqual(result, { domain: 'acme.com', message: 'Hello', chatbotId: undefined, history: undefined, widgetKey: undefined });
 });
 
 test('validateChatRuntimeBody should accept valid chatbotId with normalized history', () => {
@@ -110,4 +110,13 @@ test('validateChatRuntimeBody should accept valid chatbotId with normalized hist
   assert.equal(result.domain, undefined);
   assert.equal(result.history.length, 2);
   assert.deepEqual(result.history[0], { role: 'user', content: 'hi' });
+});
+
+
+test('validateChatRuntimeBody should validate optional widgetKey', () => {
+  const valid = validateChatRuntimeBody({ domain: 'acme.com', message: 'Hello', widgetKey: 'widget_key-1234' });
+  assert.equal(valid.widgetKey, 'widget_key-1234');
+
+  const invalidType = captureValidationError({ domain: 'acme.com', message: 'Hello', widgetKey: 123 });
+  assert.equal(hasIssue(invalidType, 'widgetKey', 'INVALID_TYPE'), true);
 });

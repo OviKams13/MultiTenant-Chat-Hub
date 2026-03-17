@@ -11,21 +11,24 @@ export const ChatRuntimeController = {
   // The method never catches and reformats domain errors because error shape is centralized in errorHandler middleware.
   async handleChat(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { chatbotId, domain, message, history } = req.body as ChatRuntimeRequestBody;
-      const result = await ChatRuntimeService.chat({ chatbotId, domain, message, history });
+      const { chatbotId, domain, widgetKey, message, history } = req.body as ChatRuntimeRequestBody;
+      const result = await ChatRuntimeService.chat(
+        { chatbotId, domain, widgetKey, message, history },
+        { origin: req.headers.origin },
+      );
 
       const response: ChatRuntimeResponseSuccess = {
         success: true,
         data: {
           answer: result.answer,
-          sourceItems: result.sourceItems
+          sourceItems: result.sourceItems,
         },
-        error: null
+        error: null,
       };
 
       res.status(200).json(response);
     } catch (error) {
       next(error);
     }
-  }
+  },
 };

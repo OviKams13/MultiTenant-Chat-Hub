@@ -13,6 +13,7 @@ import { ChatbotModel } from '../models/ChatbotModel';
 import { TagModel } from '../models/TagModel';
 import { LLMError, LLMService } from './LLMService';
 import { TagService } from './TagService';
+import { PublicRuntimeSecurityService } from './PublicRuntimeSecurityService';
 
 interface ResolvedChatbotContext {
   chatbotId: number;
@@ -24,14 +25,27 @@ interface RawItemRef {
   entityId: number;
 }
 
+interface PublicRuntimeRequestContext {
+  origin?: string;
+}
+
 // ChatRuntimeService owns public-chat orchestration and keeps HTTP/controller layers business-agnostic.
 // Feature 8.5 added tenant-scoped batch retrieval to build KnowledgeItem[] without N+1 queries.
 // Feature 8.6 adds deterministic ranking + trimming so context stays inside LLM window budgets.
 // Feature 8.7 completes this flow by delegating final answer generation to LLMService with Gemini.
 export class ChatRuntimeService {
   // chat resolves tenant scope, classifies user intent, fetches knowledge, selects context, and returns source attribution.
-  static async chat(input: ChatRuntimeInput): Promise<ChatRuntimeResult> {
+  static async chat(
+    input: ChatRuntimeInput,
+    context: PublicRuntimeRequestContext = {},
+  ): Promise<ChatRuntimeResult> {
     const { chatbotId, displayName } = await this.resolveChatbot(input);
+
+    await PublicRuntimeSecurityService.assertPublicRuntimeAccess({
+      chatbotId,
+      originHeader: context.origin,
+      widgetKey: input.widgetKey,
+    });
     const queryTags = await TagService.classifyQuestion(input.message);
 
     if (queryTags.length === 0) {
@@ -50,7 +64,7 @@ export class ChatRuntimeService {
         contextText,
         maxHistoryMessages: MAX_CHAT_HISTORY_MESSAGES,
         // English runtime locale keeps chatbot answers aligned with the current product language requirement.
-        locale: 'en'
+        locale: 'en',
       });
 
       return {
@@ -58,8 +72,8 @@ export class ChatRuntimeService {
         sourceItems: selectedItems.map((item) => ({
           entity_id: item.entityId,
           entity_type: item.kind,
-          tags: queryTags
-        }))
+          tags: queryTags,
+        })),
       };
     } catch (err: unknown) {
       // ChatRuntimeService maps low-level LLMError to a domain-level LLM_UNAVAILABLE error.
@@ -67,7 +81,7 @@ export class ChatRuntimeService {
         throw new AppError(
           'The answer generation service is temporarily unavailable.',
           503,
-          'LLM_UNAVAILABLE'
+          'LLM_UNAVAILABLE',
         );
       }
 
@@ -76,13 +90,19 @@ export class ChatRuntimeService {
   }
 
   // handleChat remains as compatibility alias while existing callers migrate to chat(...).
-  static async handleChat(input: ChatRuntimeInput): Promise<ChatRuntimeResult> {
-    return this.chat(input);
+  static async handleChat(
+    input: ChatRuntimeInput,
+    context: PublicRuntimeRequestContext = {},
+  ): Promise<ChatRuntimeResult> {
+    return this.chat(input, context);
   }
 
   // fetchKnowledgeItems retrieves all tenant-scoped entities matching query tags using batched table reads.
   // The method intentionally returns the full raw set; selection/ranking is performed later in selectContextItems.
-  private static async fetchKnowledgeItems(chatbotId: number, queryTags: string[]): Promise<KnowledgeItem[]> {
+  private static async fetchKnowledgeItems(
+    chatbotId: number,
+    queryTags: string[],
+  ): Promise<KnowledgeItem[]> {
     const tagLinks = await ChatbotItemTagModel.findAll({
       attributes: ['item_id'],
       include: [
@@ -92,25 +112,30 @@ export class ChatRuntimeService {
           attributes: ['tag_id', 'tag_code'],
           where: {
             tag_code: {
-              [Op.in]: queryTags
-            }
+              [Op.in]: queryTags,
+            },
           },
-          required: true
+          required: true,
         },
         {
           model: ChatbotItemModel,
           as: 'item',
           attributes: ['item_id', 'entity_id'],
           where: { chatbot_id: chatbotId },
-          required: true
-        }
-      ]
+          required: true,
+        },
+      ],
     });
 
     const rawItemRefs: RawItemRef[] = [];
-    for (const link of tagLinks as Array<ChatbotItemTagModel & { item?: { item_id: number; entity_id: number } }>) {
+    for (const link of tagLinks as Array<
+      ChatbotItemTagModel & { item?: { item_id: number; entity_id: number } }
+    >) {
       if (link.item) {
-        rawItemRefs.push({ itemId: Number(link.item.item_id), entityId: Number(link.item.entity_id) });
+        rawItemRefs.push({
+          itemId: Number(link.item.item_id),
+          entityId: Number(link.item.entity_id),
+        });
       }
     }
 
@@ -131,9 +156,9 @@ export class ChatRuntimeService {
     const entities = await BbEntityModel.findAll({
       where: {
         entity_id: {
-          [Op.in]: orderedEntityIds
-        }
-      }
+          [Op.in]: orderedEntityIds,
+        },
+      },
     });
 
     const entityById = new Map<number, BbEntityModel>();
@@ -169,9 +194,9 @@ export class ChatRuntimeService {
         ? await BbContactModel.findAll({
             where: {
               entity_id: {
-                [Op.in]: contactEntityIds
-              }
-            }
+                [Op.in]: contactEntityIds,
+              },
+            },
           })
         : [];
 
@@ -180,9 +205,9 @@ export class ChatRuntimeService {
         ? await BbScheduleModel.findAll({
             where: {
               entity_id: {
-                [Op.in]: scheduleEntityIds
-              }
-            }
+                [Op.in]: scheduleEntityIds,
+              },
+            },
           })
         : [];
 
@@ -191,10 +216,10 @@ export class ChatRuntimeService {
         ? await BlockTypeModel.findAll({
             where: {
               type_id: {
-                [Op.in]: Array.from(dynamicTypeIds)
-              }
+                [Op.in]: Array.from(dynamicTypeIds),
+              },
             },
-            attributes: ['type_id', 'type_name']
+            attributes: ['type_id', 'type_name'],
           })
         : [];
 
@@ -233,7 +258,7 @@ export class ChatRuntimeService {
           kind: 'CONTACT',
           entityId,
           createdAt: entity.created_at,
-          contact: this.toPlainRecord(contact)
+          contact: this.toPlainRecord(contact),
         });
         continue;
       }
@@ -244,7 +269,7 @@ export class ChatRuntimeService {
           kind: 'SCHEDULE',
           entityId,
           createdAt: entity.created_at,
-          schedules: groupedSchedules.map((schedule) => this.toPlainRecord(schedule))
+          schedules: groupedSchedules.map((schedule) => this.toPlainRecord(schedule)),
         });
         continue;
       }
@@ -257,7 +282,7 @@ export class ChatRuntimeService {
           createdAt: entity.created_at,
           typeId: Number(entity.type_id),
           typeName: blockType?.type_name ?? 'UNKNOWN_TYPE',
-          data: this.normalizeDynamicData(entity.data)
+          data: this.normalizeDynamicData(entity.data),
         });
       }
     }
@@ -327,7 +352,8 @@ export class ChatRuntimeService {
     return lines.join('\n');
   }
 
-  // resolveChatbot enforces the multi-tenant boundary: all downstream queries must use this resolved chatbotId.
+  // resolveChatbot uses domain/chatbotId only for chatbot resolution.
+  // Caller legitimacy is enforced separately through Origin allowlist checks.
   private static async resolveChatbot(input: ChatRuntimeInput): Promise<ResolvedChatbotContext> {
     let chatbot: ChatbotModel | null = null;
 
@@ -345,12 +371,14 @@ export class ChatRuntimeService {
 
     return {
       chatbotId: Number(chatbot.chatbot_id),
-      displayName: chatbot.display_name
+      displayName: chatbot.display_name,
     };
   }
 
   // toPlainRecord converts Sequelize instances into serializable plain objects for context payload safety.
-  private static toPlainRecord<T extends { toJSON?: () => object }>(row: T): Record<string, unknown> {
+  private static toPlainRecord<T extends { toJSON?: () => object }>(
+    row: T,
+  ): Record<string, unknown> {
     if (typeof row.toJSON === 'function') {
       return row.toJSON() as Record<string, unknown>;
     }

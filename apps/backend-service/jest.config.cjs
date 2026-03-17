@@ -1,7 +1,7 @@
 /**
- * Jest config dedicated to Feature 8.9 test suites.
+ * Jest config for backend TypeScript suites.
  * We transpile TypeScript tests with ts-jest and keep execution in Node environment.
- * The match list is explicit to avoid changing legacy node:test suites already present in the repository.
+ * Legacy node:test JS suites remain executable with `node --test` where needed.
  */
 module.exports = {
   preset: 'ts-jest',
@@ -9,7 +9,10 @@ module.exports = {
   roots: ['<rootDir>/src', '<rootDir>/tests'],
   testMatch: [
     '**/src/api/v1/tests/chat-runtime/ChatRuntimeService.test.ts',
+    '**/src/api/v1/tests/chatbots/ChatbotAllowedOriginService.test.ts',
+    '**/src/api/v1/tests/chat-runtime/PublicRuntimeSecurityService.test.ts',
     '**/tests/chat-runtime/publicChat.api.test.ts',
+    '**/tests/chat-runtime/publicChat.security.api.test.ts',
     '**/tests/service-boundary/backendPackaging.api.test.ts'
   ],
   clearMocks: true,

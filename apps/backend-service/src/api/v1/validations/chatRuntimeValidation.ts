@@ -6,6 +6,7 @@ export const MAX_MESSAGE_LENGTH = 1000;
 export const MAX_DOMAIN_LENGTH = 255;
 export const MAX_HISTORY_MESSAGES = 20;
 export const MAX_HISTORY_CONTENT_LENGTH = 1000;
+export const MAX_WIDGET_KEY_LENGTH = 128;
 
 interface ValidationDetail {
   field: string;
@@ -25,6 +26,7 @@ export function validateChatRuntimeBody(raw: unknown): ChatRuntimeRequestBody {
   const chatbotId = normalizeChatbotId(body.chatbotId, errors);
   const domain = normalizeDomain(body.domain, errors);
   const history = normalizeHistory(body.history, errors);
+  const widgetKey = normalizeWidgetKey(body.widgetKey, errors);
 
   if (typeof chatbotId === 'undefined' && typeof domain === 'undefined') {
     errors.push({ field: 'chatbotId|domain', issue: 'ONE_REQUIRED' });
@@ -32,7 +34,7 @@ export function validateChatRuntimeBody(raw: unknown): ChatRuntimeRequestBody {
 
   if (errors.length > 0) {
     throw new AppError('Invalid chat runtime request body', 400, 'VALIDATION_ERROR', {
-      errors
+      errors,
     });
   }
 
@@ -40,7 +42,8 @@ export function validateChatRuntimeBody(raw: unknown): ChatRuntimeRequestBody {
     chatbotId,
     domain,
     message,
-    history
+    history,
+    widgetKey,
   };
 }
 
@@ -48,12 +51,17 @@ export function validateChatRuntimeBody(raw: unknown): ChatRuntimeRequestBody {
 // It stores a normalized payload on req to keep controller logic thin and deterministic.
 // The middleware never authenticates users because this endpoint is intentionally visitor-facing.
 // Any AppError is forwarded to errorHandler to preserve the API envelope format.
-export const validateChatRuntimeRequest: RequestHandler = (req: Request, _res: Response, next: NextFunction): void => {
+export const validateChatRuntimeRequest: RequestHandler = (
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): void => {
   try {
     const validated = validateChatRuntimeBody(req.body);
     // Validation middleware normalizes req.body so downstream controller can consume typed fields directly.
     req.body = validated;
-    (req as Request & { chatRuntimePayload?: ChatRuntimeRequestBody }).chatRuntimePayload = validated;
+    (req as Request & { chatRuntimePayload?: ChatRuntimeRequestBody }).chatRuntimePayload =
+      validated;
     next();
   } catch (error) {
     if (error instanceof AppError) {
@@ -64,6 +72,31 @@ export const validateChatRuntimeRequest: RequestHandler = (req: Request, _res: R
     next(new AppError('Invalid chat runtime request body', 400, 'VALIDATION_ERROR'));
   }
 };
+
+function normalizeWidgetKey(value: unknown, errors: ValidationDetail[]): string | undefined {
+  if (typeof value === 'undefined') {
+    return undefined;
+  }
+
+  if (typeof value !== 'string') {
+    errors.push({ field: 'widgetKey', issue: 'INVALID_TYPE' });
+    return undefined;
+  }
+
+  const normalized = value.trim();
+
+  if (normalized.length === 0) {
+    errors.push({ field: 'widgetKey', issue: 'EMPTY' });
+    return undefined;
+  }
+
+  if (normalized.length > MAX_WIDGET_KEY_LENGTH) {
+    errors.push({ field: 'widgetKey', issue: 'TOO_LONG' });
+    return undefined;
+  }
+
+  return normalized;
+}
 
 // normalizeMessage checks requiredness, emptiness, and payload size to prevent oversized public requests.
 // Message trim is applied here so downstream services receive canonical text without duplicated sanitation.
@@ -138,7 +171,10 @@ function normalizeDomain(value: unknown, errors: ValidationDetail[]): string | u
 // normalizeHistory validates shape and limits of previous conversation without trusting its semantic truth.
 // History remains optional and is never interpreted as system-level instruction in this middleware.
 // We reject abusive sizes here; deeper truncation strategy remains a service-layer responsibility.
-function normalizeHistory(value: unknown, errors: ValidationDetail[]): ChatHistoryMessage[] | undefined {
+function normalizeHistory(
+  value: unknown,
+  errors: ValidationDetail[],
+): ChatHistoryMessage[] | undefined {
   if (typeof value === 'undefined') {
     return undefined;
   }

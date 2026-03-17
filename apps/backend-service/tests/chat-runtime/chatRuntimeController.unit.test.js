@@ -26,6 +26,7 @@ function createMockResponse() {
 // Controller tests consume this payload to verify pass-through into service layer input.
 function createValidRequest() {
   return {
+    headers: { origin: "https://shop.example.com" },
     body: {
       chatbotId: 3,
       domain: 'acme.com',
@@ -41,8 +42,9 @@ test('ChatRuntimeController.handleChat should call service and return success en
   const nextCalls = [];
 
   const original = ChatRuntimeService.chat;
-  ChatRuntimeService.chat = async (input) => {
+  ChatRuntimeService.chat = async (input, context) => {
     assert.deepEqual(input, req.body);
+    assert.deepEqual(context, { origin: "https://shop.example.com" });
     return {
       answer: 'Test answer',
       sourceItems: [{ entity_id: 10, entity_type: 'CONTACT', tags: ['CONTACT'] }]

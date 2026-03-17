@@ -6,10 +6,42 @@ import blockTypeRoutes from './api/v1/routes/blockTypeRoutes';
 import dynamicBlockInstanceRoutes from './api/v1/routes/dynamicBlockInstanceRoutes';
 import itemTagRoutes from './api/v1/routes/itemTagRoutes';
 import publicChatRoutes from './api/v1/routes/publicChatRoutes';
+import chatbotAllowedOriginRoutes from './api/v1/routes/chatbotAllowedOriginRoutes';
 import staticBlockRoutes from './api/v1/routes/staticBlockRoutes';
 import { authSwaggerSpec } from './config/swagger';
 
 const SERVICE_NAME = '@mth/backend-service';
+
+const parseConfiguredCorsOrigins = (): string[] =>
+  (process.env.CORS_ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((origin) => origin.trim().toLowerCase())
+    .filter((origin) => origin.length > 0);
+
+const createCorsOriginDelegate = (): cors.CorsOptions['origin'] => {
+  const configuredOrigins = parseConfiguredCorsOrigins();
+
+  return (requestOrigin, callback) => {
+    // CORS remains a browser policy layer only; runtime authorization is enforced by
+    // per-chatbot Origin allowlist checks inside public runtime security service.
+    if (!requestOrigin) {
+      callback(null, true);
+      return;
+    }
+
+    if (configuredOrigins.length === 0 || process.env.NODE_ENV !== 'production') {
+      callback(null, true);
+      return;
+    }
+
+    if (configuredOrigins.includes("*")) {
+      callback(null, true);
+      return;
+    }
+
+    callback(null, configuredOrigins.includes(requestOrigin.toLowerCase()));
+  };
+};
 
 // createApp builds the HTTP stack so tests can import app without opening a network port.
 // The service keeps one deployable API boundary that includes admin, browse, and public chat routes.
@@ -18,14 +50,19 @@ const SERVICE_NAME = '@mth/backend-service';
 export function createApp() {
   const app = express();
 
-  app.use(cors());
+  app.use(
+    cors({
+      origin: createCorsOriginDelegate(),
+      credentials: false,
+    }),
+  );
   app.use(express.json());
 
   app.get('/health', (_req, res) => {
     res.status(200).json({
       status: 'ok',
       service: SERVICE_NAME,
-      uptimeSeconds: Math.floor(process.uptime())
+      uptimeSeconds: Math.floor(process.uptime()),
     });
   });
 
@@ -55,6 +92,7 @@ export function createApp() {
   app.use('/api/v1/chatbots', blockTypeRoutes);
   app.use('/api/v1/chatbots', itemTagRoutes);
   app.use('/api/v1/chatbots', dynamicBlockInstanceRoutes);
+  app.use('/api/v1/chatbots', chatbotAllowedOriginRoutes);
   // Public runtime chat stays outside /chatbots so visitors can call it without admin routing overlap.
   app.use('/api/v1', publicChatRoutes);
 

@@ -4,6 +4,8 @@ export type WidgetRuntimeErrorCode =
   | "RATE_LIMITED"
   | "CHATBOT_NOT_FOUND"
   | "LLM_UNAVAILABLE"
+  | "ORIGIN_NOT_ALLOWED"
+  | "INVALID_WIDGET_KEY"
   | "UNKNOWN_ERROR";
 
 export type WidgetPosition =
