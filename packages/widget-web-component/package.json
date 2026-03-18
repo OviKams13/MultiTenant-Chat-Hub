@@ -7,6 +7,8 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
       "default": "./dist/index.js"
     }
   },
@@ -16,7 +18,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint \"src/**/*.{ts,tsx}\" \"tests/**/*.{ts,tsx}\"",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:browser": "node ../../scripts/ensure-windows-optional-deps.mjs && npm run build --workspace @mth/shared-types && npm run build --workspace @mth/widget-core && npm run build --workspace @mth/widget-react && esbuild src/browser.ts --bundle --format=iife --global-name=MTHChatbotWidget --outfile=dist/chatbot-widget.browser.js"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0",
@@ -40,6 +43,8 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "typescript": "^5.9.3",
-    "vitest": "^2.1.8"
-  }
+    "vitest": "^2.1.8",
+    "esbuild": "^0.25.9"
+  },
+  "type": "module"
 }

@@ -2,10 +2,26 @@
   "name": "@mth/demo-react-host",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "dev": "echo 'demo-react-host scaffold: dev command not implemented yet'",
-    "build": "echo 'demo-react-host scaffold build'",
-    "lint": "echo 'demo-react-host scaffold lint'",
-    "test": "echo 'demo-react-host scaffold test'"
+    "dev": "node ../../scripts/ensure-windows-optional-deps.mjs && npm run build:deps && vite --port 5173",
+    "build": "node ../../scripts/ensure-windows-optional-deps.mjs && npm run build:deps && vite build",
+    "preview": "vite preview --port 5173",
+    "lint": "echo 'demo-react-host lint not configured'",
+    "test": "echo 'demo-react-host test not configured'",
+    "build:deps": "npm run build --workspace @mth/shared-types && npm run build --workspace @mth/widget-core && npm run build --workspace @mth/widget-react"
+  },
+  "dependencies": {
+    "@mth/widget-react": "*",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@mth/tsconfig-base": "*",
+    "@types/react": "^18.3.23",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react-swc": "^3.11.0",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.19"
   }
 }

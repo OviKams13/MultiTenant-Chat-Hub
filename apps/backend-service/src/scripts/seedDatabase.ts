@@ -13,6 +13,10 @@ async function seedDatabase(): Promise<void> {
   const seedService = new SeedService();
 
   try {
+    // Seed now synchronizes schema first so newly added tables are present in local environments.
+    // This avoids ER_NO_SUCH_TABLE errors when running seed against an existing DB that predates new models.
+    await sequelize.sync();
+
     await seedService.runAllSeeds();
     logger.info('Seeds completed successfully.');
     await sequelize.close();

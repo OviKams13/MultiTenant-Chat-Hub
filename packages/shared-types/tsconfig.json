@@ -6,7 +6,7 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "module": "commonjs"
+    "module": "ESNext"
   },
   "include": ["src/**/*.ts"],
   "exclude": ["dist", "node_modules"]

@@ -22,8 +22,9 @@ This single HTTP service includes the existing backend domains:
 
 ## Environment setup
 
-1. Copy `.env.example` to `.env` inside `apps/backend-service`.
-2. Fill in real values for database credentials, `JWT_SECRET`, and `GEMINI_API_KEY`.
+1. If you do not already have a local `.env`, copy `.env.example` to `.env` inside `apps/backend-service`.
+2. If you already have a `.env` with real credentials, **do not overwrite it**. Update only missing keys by comparing with `.env.example`.
+3. Fill in real values for database credentials, `JWT_SECRET`, and `GEMINI_API_KEY`.
 
 ## Install dependencies (from repo root)
 
@@ -50,6 +51,39 @@ npm run start --workspace @mth/backend-service
 npm run lint --workspace @mth/backend-service
 npm run test --workspace @mth/backend-service
 ```
+
+## Docker local stack (backend + mysql)
+
+From repo root:
+
+```bash
+docker compose up --build
+```
+
+Stack services:
+
+- `mysql` (MySQL 8, persistent volume)
+- `backend` (this package, built from `apps/backend-service/Dockerfile`)
+
+Available URLs:
+
+- Backend: `http://localhost:4000`
+- Health: `http://localhost:4000/health`
+- OpenAPI docs: `http://localhost:4000/api-docs`
+- OpenAPI JSON: `http://localhost:4000/api-docs.json`
+
+Container bootstrap behavior used for local reproducibility:
+
+- `DB_AUTO_SYNC=true`: auto-creates/updates tables from Sequelize models at startup.
+- `DB_AUTO_SEED=true`: runs idempotent bootstrap seed data (`ADMIN/USER` roles, admin user, system tags, demo chatbot, and demo allowed origins).
+- `DB_CONNECT_RETRY_ATTEMPTS` + `DB_CONNECT_RETRY_DELAY_MS`: backend retries DB connection while MySQL is becoming ready.
+
+If you need real LLM answers in local compose, export `GEMINI_API_KEY` before running compose.
+
+Demo seed values used by integration hosts:
+
+- demo chatbot domain: `shop.example.com` (configurable by `SEED_DEMO_CHATBOT_DOMAIN`)
+- allowed origins seeded for local demos: `http://localhost:5173`, `http://localhost:8080`
 
 ## Public runtime contract version
 

@@ -3,9 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "echo 'demo-html-host scaffold: dev command not implemented yet'",
-    "build": "echo 'demo-html-host scaffold build'",
-    "lint": "echo 'demo-html-host scaffold lint'",
-    "test": "echo 'demo-html-host scaffold test'"
+    "build:widget": "npm run build:browser --workspace @mth/widget-web-component && node ./scripts/build-widget-bundle.mjs",
+    "dev": "npm run build:widget && npx serve public -l 8080",
+    "build": "npm run build:widget",
+    "lint": "echo 'demo-html-host lint not configured'",
+    "test": "echo 'demo-html-host test not configured'"
+  },
+  "devDependencies": {
+    "serve": "^14.2.4"
   }
 }
