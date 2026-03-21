@@ -9,7 +9,7 @@ services:
       MYSQL_USER: chatbot_user
       MYSQL_PASSWORD: chatbot_pass
     ports:
-      - '3306:3306'
+      - '3307:3306'
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
@@ -55,6 +55,47 @@ services:
       timeout: 5s
       retries: 12
       start_period: 20s
+
+  admin-app:
+    build:
+      context: apps/admin-app
+      dockerfile: Dockerfile
+    container_name: mth-admin-app
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      VITE_API_BASE_URL: http://localhost:4000/api/v1
+    ports:
+      - '4173:4173'
+
+  demo-react-host:
+    build:
+      context: .
+      dockerfile: apps/demo-react-host/Dockerfile
+    container_name: mth-demo-react-host
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      VITE_API_BASE_URL: http://localhost:4000
+      VITE_CHATBOT_DOMAIN: shop.example.com
+    ports:
+      - '5173:5173'
+
+  demo-html-host:
+    build:
+      context: .
+      dockerfile: apps/demo-html-host/Dockerfile
+    container_name: mth-demo-html-host
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - '8080:8080'
 
 volumes:
   mysql_data:

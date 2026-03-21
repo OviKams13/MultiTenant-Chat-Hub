@@ -14,7 +14,7 @@
     "clean": "turbo run clean --continue",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f backend mysql"
+    "docker:logs": "docker compose logs -f backend mysql admin-app demo-react-host demo-html-host"
   },
   "devDependencies": {
     "turbo": "^2.5.6"

@@ -40,9 +40,9 @@ From repository root:
 npm install
 ```
 
-## Run the backend
+## Run the full local stack (recommended)
 
-### Option A (recommended): Docker Compose
+### Option A: Docker Compose (backend + DB + admin + demos)
 
 ```bash
 docker compose up --build
@@ -53,6 +53,9 @@ Useful endpoints:
 - Backend: `http://localhost:4000`
 - Health: `http://localhost:4000/health`
 - API docs: `http://localhost:4000/api-docs`
+- Admin app: `http://localhost:4173`
+- React host demo: `http://localhost:5173`
+- HTML host demo: `http://localhost:8080`
 
 Optional helper scripts:
 
@@ -78,7 +81,15 @@ cp apps/backend-service/.env.example apps/backend-service/.env
 npm run dev --workspace @mth/backend-service
 ```
 
-## Run the demos
+## Run admin app and demos without Docker (optional)
+
+If you only want to run frontend hosts locally while keeping backend in Docker:
+
+### Admin app
+
+```bash
+npm run dev --workspace @mth/admin-app
+```
 
 ### React host demo
 
@@ -123,4 +134,3 @@ Remove-Item -Recurse -Force node_modules
 Remove-Item -Force package-lock.json
 npm install
 ```
-
