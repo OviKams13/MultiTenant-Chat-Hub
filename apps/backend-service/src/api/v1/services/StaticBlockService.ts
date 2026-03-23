@@ -122,6 +122,27 @@ export class StaticBlockService {
     return this.toContactDTO(chatbotId, contact);
   }
 
+  // deleteContact removes tags/item/contact/entity in one transaction for full CONTACT cleanup.
+  async deleteContact(chatbotId: number, userId: number): Promise<void> {
+    await this.ensureOwnedChatbot(chatbotId, userId);
+
+    const item = await ChatbotItemModel.findOne({
+      where: { chatbot_id: chatbotId },
+      include: [{ model: BbEntityModel, as: 'entity', where: { entity_type: 'CONTACT' }, required: true }]
+    });
+
+    if (!item) {
+      throw new AppError('Contact not found', 404, 'CONTACT_NOT_FOUND');
+    }
+
+    await sequelize.transaction(async (transaction) => {
+      await ChatbotItemTagModel.destroy({ where: { item_id: item.item_id }, transaction });
+      await ChatbotItemModel.destroy({ where: { item_id: item.item_id }, transaction });
+      await BbContactModel.destroy({ where: { entity_id: item.entity_id }, transaction });
+      await BbEntityModel.destroy({ where: { entity_id: item.entity_id }, transaction });
+    });
+  }
+
   // createSchedule creates a SCHEDULE entity/item pair and tags it with schedule defaults.
   async createSchedule(chatbotId: number, userId: number, payload: ScheduleCreatePayload): Promise<ScheduleDTO> {
     await this.ensureOwnedChatbot(chatbotId, userId);

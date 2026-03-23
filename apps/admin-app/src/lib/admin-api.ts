@@ -87,6 +87,8 @@ export const adminApi = {
     apiClient.post<ContactBlock>(`/chatbots/${chatbotId}/blocks/contact`, payload, token),
   updateContact: (chatbotId: number, payload: Partial<Omit<ContactBlock, "entity_id" | "chatbot_id">>, token: string) =>
     apiClient.put<ContactBlock>(`/chatbots/${chatbotId}/blocks/contact`, payload, token),
+  deleteContact: (chatbotId: number, token: string) =>
+    apiClient.delete(`/chatbots/${chatbotId}/blocks/contact`, token),
 
   listSchedules: (chatbotId: number, token: string) =>
     apiClient.get<ScheduleBlock[]>(`/chatbots/${chatbotId}/blocks/schedules`, token),

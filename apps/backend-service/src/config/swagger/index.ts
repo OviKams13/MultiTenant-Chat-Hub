@@ -470,6 +470,21 @@ export const authSwaggerSpec = {
           '500': { description: 'Server error' },
         },
       },
+      delete: {
+        tags: ['StaticBlocks'],
+        summary: 'Delete the contact block for a chatbot',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'chatbotId', in: 'path', required: true, schema: { type: 'integer' } },
+        ],
+        responses: {
+          '204': { description: 'Contact block deleted' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden' },
+          '404': { description: 'Chatbot/contact not found' },
+          '500': { description: 'Server error' },
+        },
+      },
     },
     '/api/v1/chatbots/{chatbotId}/blocks/schedules': {
       post: {

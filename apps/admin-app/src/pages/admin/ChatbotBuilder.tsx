@@ -128,21 +128,24 @@ const ChatbotBuilder = () => {
   const [schedules, setSchedules] = useState<ScheduleBlock[]>([]);
   const [blockTypes, setBlockTypes] = useState<BlockType[]>([]);
   const [instancesByType, setInstancesByType] = useState<Record<number, DynamicBlockInstance[]>>({});
+  const [chatbotItems, setChatbotItems] = useState<ChatbotItemSummary[]>([]);
   const [mode, setMode] = useState<Mode>({ type: "NONE" });
   const [saving, setSaving] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!token || !chatbotId) return;
 
-    const [chatbot, schedulesData, types] = await Promise.all([
+    const [chatbot, schedulesData, types, itemRows] = await Promise.all([
       adminApi.getChatbot(chatbotId, token),
       adminApi.listSchedules(chatbotId, token),
       adminApi.listBlockTypes(chatbotId, token),
+      adminApi.listChatbotItems(chatbotId, token),
     ]);
 
     setShopName(chatbot.display_name);
     setSchedules(schedulesData);
     setBlockTypes(types);
+    setChatbotItems(itemRows);
 
     const entries = await Promise.all(
       types.map(async (type) => {
@@ -304,6 +307,63 @@ const ChatbotBuilder = () => {
     }
   };
 
+  const getItemIdForEntity = useCallback(
+    (entityId?: number) => {
+      if (!entityId) return null;
+      return chatbotItems.find((item) => item.entity_id === entityId)?.item_id ?? null;
+    },
+    [chatbotItems]
+  );
+
+  const deleteContact = async () => {
+    if (!token || !contact) return;
+    setSaving(true);
+    try {
+      await adminApi.deleteContact(chatbotId, token);
+      toast({ title: "Contact deleted" });
+      setMode({ type: "NONE" });
+      await loadData();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteSchedule = async (entityId?: number) => {
+    if (!token || !entityId) return;
+    setSaving(true);
+    try {
+      await adminApi.deleteSchedule(chatbotId, entityId, token);
+      toast({ title: "Schedule deleted" });
+      setMode({ type: "NONE" });
+      await loadData();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteBlockTypeCascade = async (blockType: BlockType) => {
+    if (!token) return;
+    setSaving(true);
+    try {
+      const currentInstances = instancesByType[blockType.type_id] ?? [];
+      for (const instance of currentInstances) {
+        await adminApi.deleteDynamicInstance(chatbotId, blockType.type_id, instance.entity_id, token);
+      }
+      await adminApi.deleteBlockType(chatbotId, blockType.type_id, token);
+      toast({ title: "Dynamic instances + block type deleted" });
+      setMode({ type: "NONE" });
+      await loadData();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const editType = async (typeId: number) => {
     if (!token) return;
     const full = await adminApi.getBlockType(chatbotId, typeId, token);
@@ -428,17 +488,32 @@ const ChatbotBuilder = () => {
                 <ContactForm
                   data={contact ?? EMPTY_CONTACT}
                   onSave={saveContact}
+                  onDelete={contact ? deleteContact : undefined}
+                  itemId={getItemIdForEntity(contact?.entity_id)}
                   onCancel={() => setMode({ type: "NONE" })}
                   saving={saving}
                 />
               )}
 
               {mode.type === "SCHEDULE" && (
-                <ScheduleForm data={mode.data} onSave={saveSchedule} onCancel={() => setMode({ type: "NONE" })} saving={saving} />
+                <ScheduleForm
+                  data={mode.data}
+                  onSave={saveSchedule}
+                  onDelete={() => deleteSchedule(mode.data?.entity_id)}
+                  itemId={getItemIdForEntity(mode.data?.entity_id)}
+                  onCancel={() => setMode({ type: "NONE" })}
+                  saving={saving}
+                />
               )}
 
               {mode.type === "BLOCK_TYPE" && (
-                <BlockTypeForm data={mode.data} onSave={saveBlockType} onCancel={() => setMode({ type: "NONE" })} saving={saving} />
+                <BlockTypeForm
+                  data={mode.data}
+                  onSave={saveBlockType}
+                  onDelete={mode.data ? () => deleteBlockTypeCascade(mode.data as BlockType) : undefined}
+                  onCancel={() => setMode({ type: "NONE" })}
+                  saving={saving}
+                />
               )}
 
               {mode.type === "INSTANCE" && (
@@ -447,6 +522,8 @@ const ChatbotBuilder = () => {
                   data={mode.data}
                   onSave={(payload) => saveInstance(mode.blockType, payload)}
                   onEditDefinition={() => editType(mode.blockType.type_id)}
+                  onDelete={() => deleteBlockTypeCascade(mode.blockType)}
+                  itemId={getItemIdForEntity(mode.data?.entity_id)}
                   onCancel={() => setMode({ type: "NONE" })}
                   saving={saving}
                 />
@@ -470,11 +547,15 @@ const ChatbotBuilder = () => {
 function ContactForm({
   data,
   onSave,
+  onDelete,
+  itemId,
   onCancel,
   saving,
 }: {
   data: ContactFormData;
   onSave: (d: ContactFormData) => void;
+  onDelete?: () => void;
+  itemId?: number | null;
   onCancel: () => void;
   saving: boolean;
 }) {
@@ -484,7 +565,11 @@ function ContactForm({
 
   return (
     <Card>
-      <CardHeader><CardTitle className="text-base">Contact Block</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle className="text-base">
+          Contact Block {itemId ? ` | Item ID: ${itemId}` : ""}
+        </CardTitle>
+      </CardHeader>
       <CardContent className="space-y-3">
         <div><Label>Org name</Label><Input value={form.org_name} onChange={set("org_name")} /></div>
         <div><Label>Phone</Label><Input value={form.phone} onChange={set("phone")} /></div>
@@ -497,6 +582,11 @@ function ContactForm({
         <div><Label>Opening hours</Label><Textarea value={form.hours_text} onChange={set("hours_text")} /></div>
         <div className="flex gap-2">
           <Button onClick={() => onSave(form)} className="gradient-brand text-primary-foreground" disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
+          {onDelete ? (
+            <Button variant="destructive" onClick={onDelete} disabled={saving}>
+              Delete
+            </Button>
+          ) : null}
           <Button variant="outline" onClick={onCancel}>Cancel</Button>
         </div>
       </CardContent>
@@ -507,11 +597,15 @@ function ContactForm({
 function ScheduleForm({
   data,
   onSave,
+  onDelete,
+  itemId,
   onCancel,
   saving,
 }: {
   data?: Partial<ScheduleBlock>;
   onSave: (d: any) => void;
+  onDelete?: () => void;
+  itemId?: number | null;
   onCancel: () => void;
   saving: boolean;
 }) {
@@ -531,7 +625,11 @@ function ScheduleForm({
 
   return (
     <Card>
-      <CardHeader><CardTitle className="text-base">Schedule Block</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle className="text-base">
+          Schedule Block {itemId ? ` | Item ID: ${itemId}` : ""}
+        </CardTitle>
+      </CardHeader>
       <CardContent className="space-y-3">
         <div><Label>Title</Label><Input value={form.title} onChange={set("title")} placeholder="Weekday hours" /></div>
         <div>
@@ -547,6 +645,11 @@ function ScheduleForm({
         <div><Label>Notes</Label><Input value={form.notes ?? ""} onChange={set("notes")} placeholder="Closed on holidays" /></div>
         <div className="flex gap-2">
           <Button onClick={() => onSave(form)} className="gradient-brand text-primary-foreground" disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
+          {onDelete && form.entity_id ? (
+            <Button variant="destructive" onClick={onDelete} disabled={saving}>
+              Delete
+            </Button>
+          ) : null}
           <Button variant="outline" onClick={onCancel}>Cancel</Button>
         </div>
       </CardContent>
@@ -557,11 +660,13 @@ function ScheduleForm({
 function BlockTypeForm({
   data,
   onSave,
+  onDelete,
   onCancel,
   saving,
 }: {
   data?: BlockType;
   onSave: (payload: { type_name: string; description?: string; schema_definition: Record<string, unknown>; type_id?: number }) => void;
+  onDelete?: () => void;
   onCancel: () => void;
   saving: boolean;
 }) {
@@ -680,6 +785,11 @@ function BlockTypeForm({
         </div>
         <div className="flex gap-2">
           <Button onClick={handleSave} className="gradient-brand text-primary-foreground" disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
+          {onDelete && data?.type_id ? (
+            <Button variant="destructive" onClick={onDelete} disabled={saving}>
+              Delete
+            </Button>
+          ) : null}
           <Button variant="outline" onClick={onCancel}>Cancel</Button>
         </div>
       </CardContent>
@@ -692,6 +802,8 @@ function DynamicInstanceForm({
   data,
   onSave,
   onEditDefinition,
+  onDelete,
+  itemId,
   onCancel,
   saving,
 }: {
@@ -699,6 +811,8 @@ function DynamicInstanceForm({
   data?: DynamicBlockInstance;
   onSave: (payload: { entity_id?: number; data: Record<string, unknown> }) => void;
   onEditDefinition: () => void;
+  onDelete: () => void;
+  itemId?: number | null;
   onCancel: () => void;
   saving: boolean;
 }) {
@@ -729,7 +843,11 @@ function DynamicInstanceForm({
 
   return (
     <Card>
-      <CardHeader><CardTitle className="text-base">Dynamic instance — {blockType.type_name}</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle className="text-base">
+          Dynamic Instances | {blockType.type_name} {itemId ? `| Item ID: ${itemId}` : ""}
+        </CardTitle>
+      </CardHeader>
       <CardContent className="space-y-3">
         {schemaFields.length === 0 ? (
           <p className="text-sm text-muted-foreground">No schema fields found for this block type.</p>
@@ -770,6 +888,9 @@ function DynamicInstanceForm({
         <div className="flex gap-2">
           <Button onClick={handleSave} className="gradient-brand text-primary-foreground" disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
           <Button variant="outline" onClick={onEditDefinition}>Edit Block Type Definition</Button>
+          <Button variant="destructive" onClick={onDelete} disabled={saving}>
+            Delete
+          </Button>
           <Button variant="outline" onClick={onCancel}>Cancel</Button>
         </div>
       </CardContent>

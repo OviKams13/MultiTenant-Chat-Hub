@@ -60,6 +60,20 @@ export const StaticBlockController = {
     }
   },
 
+  async deleteContact(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const user = (req as Request & { user?: { userId: number } }).user;
+      if (!user) throw new AppError('Unauthorized', 401, 'UNAUTHORIZED');
+
+      const chatbotId = validatePathId(req.params.chatbotId, 'chatbotId');
+      await staticBlockService.deleteContact(chatbotId, user.userId);
+
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async createSchedule(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const user = (req as Request & { user?: { userId: number } }).user;

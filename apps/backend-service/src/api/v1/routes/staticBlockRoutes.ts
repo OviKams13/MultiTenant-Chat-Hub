@@ -11,6 +11,7 @@ const staticBlockRoutes = Router();
 staticBlockRoutes.post('/:chatbotId/blocks/contact', requireAuth, requireRole(['ADMIN']), StaticBlockController.createContact);
 staticBlockRoutes.get('/:chatbotId/blocks/contact', requireAuth, requireRole(['ADMIN']), StaticBlockController.getContact);
 staticBlockRoutes.put('/:chatbotId/blocks/contact', requireAuth, requireRole(['ADMIN']), StaticBlockController.updateContact);
+staticBlockRoutes.delete('/:chatbotId/blocks/contact', requireAuth, requireRole(['ADMIN']), StaticBlockController.deleteContact);
 
 staticBlockRoutes.post('/:chatbotId/blocks/schedules', requireAuth, requireRole(['ADMIN']), StaticBlockController.createSchedule);
 staticBlockRoutes.get('/:chatbotId/blocks/schedules', requireAuth, requireRole(['ADMIN']), StaticBlockController.listSchedules);
