@@ -1,6 +1,14 @@
 import { Op } from 'sequelize';
+import { sequelize } from '../../../config/DatabaseConfig';
 import { AppError } from '../errors/AppError';
 import { ChatbotDTO, CreateChatbotPayload, UpdateChatbotPayload } from '../interfaces/Chatbot';
+import { BbContactModel } from '../models/BbContactModel';
+import { BbEntityModel } from '../models/BbEntityModel';
+import { BbScheduleModel } from '../models/BbScheduleModel';
+import { BlockTypeModel } from '../models/BlockTypeModel';
+import { ChatbotAllowedOriginModel } from '../models/ChatbotAllowedOriginModel';
+import { ChatbotItemModel } from '../models/ChatbotItemModel';
+import { ChatbotItemTagModel } from '../models/ChatbotItemTagModel';
 import { ChatbotModel } from '../models/ChatbotModel';
 
 // ChatbotService encapsulates multi-tenant rules so users can only manage their own chatbots.
@@ -83,13 +91,64 @@ export class ChatbotService {
 
   // deleteChatbotForUser performs hard delete; soft delete can be introduced in future roadmap.
   async deleteChatbotForUser(userId: number, chatbotId: number): Promise<void> {
-    const deletedRows = await ChatbotModel.destroy({
+    const chatbot = await ChatbotModel.findOne({
       where: { chatbot_id: chatbotId, user_id: userId }
     });
-
-    if (deletedRows === 0) {
+    if (!chatbot) {
       throw new AppError('Chatbot not found', 404, 'CHATBOT_NOT_FOUND');
     }
+
+    await sequelize.transaction(async (transaction) => {
+      const items = await ChatbotItemModel.findAll({
+        where: { chatbot_id: chatbotId },
+        attributes: ['item_id', 'entity_id'],
+        transaction
+      });
+      const itemIds = items.map((item) => Number(item.item_id));
+      const entityIds = items.map((item) => Number(item.entity_id));
+
+      if (itemIds.length > 0) {
+        await ChatbotItemTagModel.destroy({
+          where: { item_id: itemIds },
+          transaction
+        });
+      }
+
+      await ChatbotItemModel.destroy({
+        where: { chatbot_id: chatbotId },
+        transaction
+      });
+
+      if (entityIds.length > 0) {
+        await BbContactModel.destroy({
+          where: { entity_id: entityIds },
+          transaction
+        });
+        await BbScheduleModel.destroy({
+          where: { entity_id: entityIds },
+          transaction
+        });
+        await BbEntityModel.destroy({
+          where: { entity_id: entityIds },
+          transaction
+        });
+      }
+
+      await ChatbotAllowedOriginModel.destroy({
+        where: { chatbot_id: chatbotId },
+        transaction
+      });
+
+      await BlockTypeModel.destroy({
+        where: { chatbot_id: chatbotId },
+        transaction
+      });
+
+      await ChatbotModel.destroy({
+        where: { chatbot_id: chatbotId, user_id: userId },
+        transaction
+      });
+    });
   }
 
   // toDTO keeps database column names decoupled from outward API contract names.

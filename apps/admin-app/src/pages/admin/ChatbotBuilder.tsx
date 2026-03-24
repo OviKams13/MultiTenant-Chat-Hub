@@ -86,6 +86,23 @@ const EMPTY_CONTACT: ContactFormData = {
   hours_text: "",
 };
 
+function parseContactHours(hoursText: string): { open_time: string; close_time: string } {
+  const normalized = hoursText.trim();
+  if (normalized.length === 0) {
+    return { open_time: "09:00", close_time: "18:00" };
+  }
+
+  const match = normalized.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})$/);
+  if (!match) {
+    return { open_time: "09:00", close_time: "18:00" };
+  }
+
+  return {
+    open_time: match[1],
+    close_time: match[2],
+  };
+}
+
 function parseSchemaFields(schemaDefinition: Record<string, unknown> | undefined): SchemaField[] {
   const fields = schemaDefinition?.fields;
   if (!Array.isArray(fields)) return [];
@@ -560,6 +577,17 @@ function ContactForm({
   saving: boolean;
 }) {
   const [form, setForm] = useState<ContactFormData>(data);
+  const initialHours = parseContactHours(data.hours_text);
+  const [openTime, setOpenTime] = useState(initialHours.open_time);
+  const [closeTime, setCloseTime] = useState(initialHours.close_time);
+
+  useEffect(() => {
+    setForm(data);
+    const parsed = parseContactHours(data.hours_text);
+    setOpenTime(parsed.open_time);
+    setCloseTime(parsed.close_time);
+  }, [data]);
+
   const set = (k: keyof ContactFormData) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
@@ -579,9 +607,21 @@ function ContactForm({
           <div><Label>City</Label><Input value={form.city} onChange={set("city")} /></div>
           <div><Label>Country</Label><Input value={form.country} onChange={set("country")} /></div>
         </div>
-        <div><Label>Opening hours</Label><Textarea value={form.hours_text} onChange={set("hours_text")} /></div>
+        <div>
+          <Label>Opening hours</Label>
+          <div className="grid grid-cols-2 gap-2">
+            <div><Label>Open</Label><Input type="time" value={openTime} onChange={(e) => setOpenTime(e.target.value)} /></div>
+            <div><Label>Close</Label><Input type="time" value={closeTime} onChange={(e) => setCloseTime(e.target.value)} /></div>
+          </div>
+        </div>
         <div className="flex gap-2">
-          <Button onClick={() => onSave(form)} className="gradient-brand text-primary-foreground" disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
+          <Button
+            onClick={() => onSave({ ...form, hours_text: `${openTime}-${closeTime}` })}
+            className="gradient-brand text-primary-foreground"
+            disabled={saving}
+          >
+            {saving ? "Saving…" : "Save"}
+          </Button>
           {onDelete ? (
             <Button variant="destructive" onClick={onDelete} disabled={saving}>
               Delete
@@ -724,7 +764,7 @@ function BlockTypeForm({
           </div>
           <div className="space-y-2">
             {fields.map((field, index) => (
-              <div key={`${index}-${field.name}`} className="rounded-md border p-2 space-y-2">
+              <div key={index} className="rounded-md border p-2 space-y-2">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div>
                     <Label>Name</Label>

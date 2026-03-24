@@ -71,7 +71,7 @@ describe('ChatbotService', () => {
   });
 
   it('deleteChatbotForUser should throw CHATBOT_NOT_FOUND when nothing deleted', async () => {
-    jest.spyOn(ChatbotModel, 'destroy').mockResolvedValue(0);
+    jest.spyOn(ChatbotModel, 'findOne').mockResolvedValue(null);
 
     await expect(chatbotService.deleteChatbotForUser(7, 9)).rejects.toEqual(
       expect.objectContaining({ code: 'CHATBOT_NOT_FOUND' })
